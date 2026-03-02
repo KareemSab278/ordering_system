@@ -1,11 +1,12 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
-
+import { Modal } from "./Components/Modal";
+import { PrimaryButton } from "./Components/Button";
+export {App};
 function App() {
   const [greetMsg, setGreetMsg] = useState("");
   const [name, setName] = useState("");
+  const [modalOpen, setModalOpen] = useState(false);
 
   async function greet() {
     // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -13,21 +14,8 @@ function App() {
   }
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
+    <main style={styles.body}>
+      <h1>Payment System</h1>
 
       <form
         className="row"
@@ -44,8 +32,26 @@ function App() {
         <button type="submit">Greet</button>
       </form>
       <p>{greetMsg}</p>
+
+      <PrimaryButton title="Open Modal" onClick={() => setModalOpen(true)} />
+
+      <Modal
+        opened={modalOpen}
+        closed={() => setModalOpen(false)}
+        title="This is a Modal"
+      >
+        <p>Here is some content inside the modal.</p>
+        <PrimaryButton title="Close Modal" onClick={() => setModalOpen(false)} />
+      </Modal>
     </main>
   );
 }
 
-export default App;
+const styles = {
+  body: {
+    background: "#000000",
+    minHeight: "100vh",
+    padding: 0,
+    margin: 0,
+  }
+};
