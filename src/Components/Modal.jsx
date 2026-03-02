@@ -6,9 +6,7 @@ const Modal = ({ opened, closed, title, children }) => {
   return (
     <div style={styles.mainBody} onClick={closed}>
       <div style={styles.innerBody} onClick={(e) => e.stopPropagation()}>
-        <h2 style={{ marginTop: 0, color: "#fff", marginBottom: "1.5rem" }}>
-          {title}
-        </h2>
+        <h2 style={styles.title}>{title}</h2>
         {children}
       </div>
     </div>
@@ -22,20 +20,22 @@ const styles = {
     left: 0,
     width: "100vw",
     height: "100vh",
-    background: "rgba(0, 0, 0, 0.55)",
+    background: "rgba(0, 0, 0, 0.74)",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 9999,
-    fontFamily: 'Consolas, "Fira Mono", "Menlo", monospace'
+    fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   },
+  title: { marginTop: 0, color: "#fff", marginBottom: "1.5rem" },
   innerBody: {
     background: "#1e1e1e",
     border: "1px solid #333",
     borderRadius: 8,
-    padding: "2rem",
-    width: "600px",
-    height: "80vh",
+    padding: "1.5rem",
+    width: "90vw",
+    maxWidth: "400px",
+    maxHeight: "80vh",
     overflow: "auto",
     boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5)",
     color: "#d4d4d4",

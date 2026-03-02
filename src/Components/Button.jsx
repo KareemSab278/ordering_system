@@ -1,20 +1,20 @@
 import { Button } from "@mantine/core";
 export { PrimaryButton };
 
-const PrimaryButton = ({ title, onClick }) => {
+const PrimaryButton = ({ title, onClick, color }) => {
   return (
     <section style={{ display: "inline-block", margin: "8px" }}>
       <Button
         variant="filled"
         size="xs"
         radius="xl"
-        style={styles.primary}
+        style={{ ...styles.primary, backgroundColor: color || styles.primary.backgroundColor }}
         onMouseOver={(e) => {
-          e.currentTarget.style.backgroundColor = "rgba(156, 156, 156, 0.7)";
+          e.currentTarget.style.backgroundColor = color ? `rgba(${parseInt(color.slice(1, 3), 16)}, ${parseInt(color.slice(3, 5), 16)}, ${parseInt(color.slice(5, 7), 16)}, 0.7)` : "rgba(156, 156, 156, 0.7)";
           e.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.18)";
         }}
         onMouseOut={(e) => {
-          e.currentTarget.style.backgroundColor = "rgba(99, 99, 99, 0.42)";
+          e.currentTarget.style.backgroundColor = color || styles.primary.backgroundColor;
           e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.12)";
         }}
         onClick={onClick}

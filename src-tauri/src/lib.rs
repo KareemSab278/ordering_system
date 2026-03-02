@@ -2,6 +2,7 @@ use serialport::{ DataBits, FlowControl, Parity, StopBits };
 use std::io::{ BufRead, BufReader, Read, Write };
 use std::net::TcpStream;
 use std::time::Duration;
+// use serde::Serialize;
 
 // ── Serial settings per MDB Master RS232 docs ──
 // Baud: 115200, Data: 8, Parity: NONE, Stop: 1, HW flow: RTS/CTS, SW flow: NO
@@ -9,19 +10,34 @@ const BAUD_RATE: u32 = 115200;
 const DAEMON_ADDR: &str = "127.0.0.1:5127";
 const TCP_TIMEOUT_MS: u64 = 1000;
 
+// ─────────────────────────────────────────────────────────────
+// dont use this because react will call api for products.
 
-// test:
-#[tauri::command]
-fn greet(name: String) -> String{
-    format!("{}, hello from rust!", name)
-}
+// #[derive(Serialize)]
+// struct Products {
+//     product_id: u64,
+//     product_name: String,
+//     product_category: String,
+//     product_price: f64,
+//     product_availability: bool,
+// }
+
+// #[tauri::command]
+// fn get_products_json() -> Products {
+//     return Products {
+//         product_id: 1,
+//         product_name: "Example Product".to_string(),
+//         product_category: "Example Category".to_string(),
+//         product_price: 9.99,
+//         product_availability: true,
+//     };
+// }
 
 // ─────────────────────────────────────────────────────────────
 //  HIGH LEVEL MODE — talks to the Python daemon via TCP :5127
 //  Send text commands like CashlessReset(1), get JSON back.
 // ─────────────────────────────────────────────────────────────
 /// Send a text command to the MDB daemon on TCP 5127 and return the JSON response.
-
 
 #[tauri::command]
 fn mdb_command(command: String) -> Result<String, String> {
@@ -96,9 +112,7 @@ pub fn run() {
     tauri::Builder
         ::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![mdb_command, greet])
+        .invoke_handler(tauri::generate_handler![mdb_command])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
-
