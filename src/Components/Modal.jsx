@@ -27,7 +27,7 @@ const styles = {
     zIndex: 9999,
     fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   },
-  title: { marginTop: 0, color: "#fff", marginBottom: "1.5rem" },
+  title: { marginTop: 0, color: "#fff", marginBottom: "1.5rem", textAlign: "center" },
   innerBody: {
     background: "#1e1e1e",
     border: "1px solid #333",

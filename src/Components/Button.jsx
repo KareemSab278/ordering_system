@@ -29,10 +29,10 @@ const styles = {
   primary: {
     backgroundColor: "rgba(99, 99, 99, 0.42)",
     color: "#fff",
-    padding: "4px 8px",
+    padding: "10px 15px",
     fontWeight: "bold",
-    fontSize: "1rem",
-    boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+    fontSize: "1.1rem",
+    boxShadow: "0px 2px 10px rgba(0, 0, 0, 0.36)",
     border: "none",
     borderRadius: "24px",
     cursor: "pointer",

@@ -21,6 +21,7 @@ function App() {
       const isAdd = action == "add";
       const countChange = isAdd ? 1 : -1;
       const condition = isAdd ? found : found && found.count > 1;
+
       if (condition) {
         return prev.map((prod) =>
           prod.product_id === product.product_id
@@ -28,41 +29,28 @@ function App() {
             : prod,
         );
       }
-      return isAdd ? [...prev, { ...product, count: 1 }] : prev.filter((prod) => prod.product_id !== product.product_id);
+
+      return isAdd
+        ? [...prev, { ...product, count: 1 }]
+        : prev.filter((prod) => prod.product_id !== product.product_id);
     });
   };
 
   const categories = ["All", "Drinks", "Snacks", "Food"];
-  const filteredProducts =
-    activeCategory === "All"
-      ? products
+  const filteredProducts = activeCategory === "All" ? products
       : products.filter((prod) => prod.product_category === activeCategory);
 
-  return (
-    <main style={styles.body}>
-      <h1>Payment System</h1>
-      <section style={styles.categoryIndicatorContainer}>
-        <CategoryIndicator
-          categories={categories}
-          activeCategory={activeCategory}
-          onCategoryClick={setActiveCategory}
-        />
-      </section>
-      <section style={styles.productsSection}>
-        {filteredProducts.map((product) => (
-          <ProductCard
-            key={product.product_id}
-            product={product}
-            onClick={() => appendProduct(product, "add")}
-          />
-        ))}
-      </section>
-      <PrimaryButton title="View Order" onClick={() => setModalOpen(true)} />
-      <Modal
-        opened={modalOpen}
-        closed={() => setModalOpen(false)}
-        title="Selected Products"
-        children={
+  const selectedProductsModal = (
+    <Modal
+      opened={modalOpen}
+      closed={() => setModalOpen(false)}
+      title="Selected Products"
+      children={
+        selectedProducts.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "2rem" }}>
+            No products selected.
+          </div>
+        ) : (
           <section style={styles.productsSection}>
             {selectedProducts.map((prod) => (
               <ProductCard
@@ -80,15 +68,48 @@ function App() {
               />
             ))}
           </section>
-        }
-      />
+        )
+      }
+    />
+  );
+
+  const categoryIndocator = (
+   <div style={styles.topContainer}>
+        <section style={styles.categoryIndicatorContainer}>
+          <CategoryIndicator
+            categories={categories}
+            activeCategory={activeCategory}
+            onCategoryClick={setActiveCategory}
+          />
+        </section>
+      </div>
+  );
+
+  const productsSection = (
+    <section style={styles.productsSection}>
+      {filteredProducts.map((product) => (
+        <ProductCard
+          key={product.product_id}
+          product={product}
+          onClick={() => appendProduct(product, "add")}
+        />
+      ))}
+    </section>
+  );
+
+  return (
+    <main style={styles.body}>
+      {categoryIndocator}
+      {productsSection}
+      <PrimaryButton title="View Order" onClick={() => setModalOpen(true)} />
+      {selectedProductsModal}
     </main>
   );
 }
 
 const styles = {
   body: {
-    background: "#35395c",
+    background: "#1b2136",
     color: "#fff",
     fontFamily:
       'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
@@ -98,13 +119,34 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: "7rem",
+  },
+  topContainer: {
+    position: "fixed",
+    top: 0,
+    left: "50%",
+    transform: "translateX(-50%)", 
+    zIndex: 1100,
+    display: "flex",
     justifyContent: "center",
+    alignItems: "center",
+    background: "#181A20",
+    boxShadow: "0px 2px 15px rgba(0, 0, 0, 0.52)",
+    borderRadius: "50px",
+    padding: "0.5rem 0.5rem",
+    marginTop: "1rem",
+  },
+  header: {
+    width: "100%",
+    textAlign: "center",
+    margin: 0,
   },
   categoryIndicatorContainer: {
     display: "flex",
     justifyContent: "center",
-    width: "100%",
-    marginBottom: "2rem",
+    alignItems: "center",
+    margin: 0,
   },
   productsSection: {
     display: "flex",
@@ -115,5 +157,6 @@ const styles = {
     width: "100%",
     maxWidth: "900px",
     margin: "0 auto 2rem auto",
+    marginTop: "1rem",
   },
 };

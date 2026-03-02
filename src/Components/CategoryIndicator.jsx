@@ -12,7 +12,7 @@ const CategoryIndicator = ({ categories, activeCategory, onCategoryClick }) => {
         {categories.map((category) => (
             <PrimaryButton
                 key={category}
-                color = {activeCategory === category ? "#3e5bef" : "rgba(99, 99, 99, 0.42)"}
+                color = {activeCategory === category ? "#3e73ef" : "rgb(99, 99, 99)"}
                 onClick={() => onCategoryClick(category)}
                 title={category}
             />
@@ -31,8 +31,6 @@ const styles = {
     container: {
         position: "relative",
         display: "flex",
-        borderBottom: "1px solid #333",
-        marginBottom: "1rem",
     },
     button: {
         background: "none",
