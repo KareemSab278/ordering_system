@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "./Components/Modal";
-import { PrimaryButton } from "./Components/Button";
 import { CategoryIndicator } from "./Components/CategoryIndicator";
 import { products } from "./TestData/products";
 import { ProductCard } from "./Components/ProductCard";
+import { PriceStatusPill } from "./Components/PriceStatusPill";
+import { PrimaryButton } from "./Components/Button";
 
 export { App };
 
@@ -35,8 +36,10 @@ function App() {
   };
 
   const categories = ["All", "Drinks", "Snacks", "Food"];
-  const filteredProducts = activeCategory === "All" ? products
-      : products.filter((prod) => prod.product_category === activeCategory);
+  const filteredProducts = activeCategory === "All" ? products.filter((prod) => prod.product_availability == true)
+    : products.filter((prod) => prod.product_category === activeCategory && prod.product_availability == true);
+
+  const totalPrice = selectedProducts.reduce((sum, p) => sum + p.product_price * p.count, 0);
 
   const selectedProductsModal = (
     <Modal
@@ -57,9 +60,9 @@ function App() {
                 title={`${prod.product_name} (Qty: ${prod.count})`}
                 selected
                 onRemove={() => appendProduct(prod, "remove")}
-                
               />
             ))}
+            <PrimaryButton title="Clear All" onClick={() => setSelectedProducts([])} />
           </section>
         )
       }
@@ -67,15 +70,15 @@ function App() {
   );
 
   const categoryIndocator = (
-   <div style={styles.topContainer}>
-        <section style={styles.categoryIndicatorContainer}>
-          <CategoryIndicator
-            categories={categories}
-            activeCategory={activeCategory}
-            onCategoryClick={setActiveCategory}
-          />
-        </section>
-      </div>
+    <div style={styles.topContainer}>
+      <section style={styles.categoryIndicatorContainer}>
+        <CategoryIndicator
+          categories={categories}
+          activeCategory={activeCategory}
+          onCategoryClick={setActiveCategory}
+        />
+      </section>
+    </div>
   );
 
   const productsSection = (
@@ -94,7 +97,7 @@ function App() {
     <main style={styles.body}>
       {categoryIndocator}
       {productsSection}
-      <PrimaryButton title="View Order" onClick={() => setModalOpen(true)} />
+      <PriceStatusPill onModalOpen={() => setModalOpen(true)} totalPrice={totalPrice} />
       {selectedProductsModal}
     </main>
   );
@@ -119,7 +122,7 @@ const styles = {
     position: "fixed",
     top: 0,
     left: "50%",
-    transform: "translateX(-50%)", 
+    transform: "translateX(-50%)",
     zIndex: 1100,
     display: "flex",
     justifyContent: "center",
