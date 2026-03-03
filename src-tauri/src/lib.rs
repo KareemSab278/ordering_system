@@ -30,7 +30,7 @@ fn auth_header() -> String {
 }
 
 // in order to run this command youll need to first run:
-// sudo apt install python3-flask
+// sudo apt install python3-flask python3-serial
 #[tauri::command]
 async fn initialize_payment_server() -> Result<(), String> {
     let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

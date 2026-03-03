@@ -1,6 +1,14 @@
 # Coinadrink Ordering System
 
 A contactless card payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic & hardware communication).
+// in order to run this command youll need to first run:
+// sudo apt install python3-flask python3-serial
+
+if building on pc then please run sudo apt install gcc-aarch64-linux-gnu first nneayse pi is arm64
+then rustup target add aarch64-unknown-linux-gnu
+npm run tauri build -- --target aarch64-unknown-linux-gnu
+
+otherwise just build on the pi directly
 
 ## System Architecture
 
