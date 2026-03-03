@@ -13,25 +13,27 @@
     "windows": [
       {
         "title": "ordering_system",
-        "fullscreen": true
+        "fullscreen": true,
+        "width": 600,
+        "height": 1024,
+        "resizable": false
       }
     ],
     "security": {
       "csp": null
     }
   },
-
-    "bundle": {
-      "active": true,
-      "targets": [
-        "deb"
-      ],
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ]
-    }
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
+}
