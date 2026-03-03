@@ -1,5 +1,5 @@
-use serialport::{ DataBits, FlowControl, Parity, StopBits };
-use std::io::{ BufRead, BufReader, Read, Write };
+use serialport::{DataBits, FlowControl, Parity, StopBits};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::time::Duration;
 // use serde::Serialize;
@@ -43,13 +43,12 @@ const TCP_TIMEOUT_MS: u64 = 1000;
 fn mdb_command(command: String) -> Result<String, String> {
     println!("[TCP] Connecting to daemon at {}", DAEMON_ADDR);
 
-    let stream = TcpStream::connect(DAEMON_ADDR).map_err(|e|
+    let stream = TcpStream::connect(DAEMON_ADDR).map_err(|e| {
         format!(
             "Cannot connect to MDB daemon at {} — is the Python daemon running? Error: {}",
-            DAEMON_ADDR,
-            e
+            DAEMON_ADDR, e
         )
-    )?;
+    })?;
 
     stream
         .set_read_timeout(Some(Duration::from_millis(TCP_TIMEOUT_MS)))
@@ -58,11 +57,15 @@ fn mdb_command(command: String) -> Result<String, String> {
         .set_write_timeout(Some(Duration::from_millis(TCP_TIMEOUT_MS)))
         .map_err(|e| format!("Set timeout failed: {}", e))?;
 
-    let mut writer = stream.try_clone().map_err(|e| format!("Clone failed: {}", e))?;
+    let mut writer = stream
+        .try_clone()
+        .map_err(|e| format!("Clone failed: {}", e))?;
 
     let msg = format!("{}\n", command.trim());
     println!("[TCP TX] {}", msg.trim());
-    writer.write_all(msg.as_bytes()).map_err(|e| format!("Write failed: {}", e))?;
+    writer
+        .write_all(msg.as_bytes())
+        .map_err(|e| format!("Write failed: {}", e))?;
     writer.flush().map_err(|e| format!("Flush failed: {}", e))?;
 
     let mut reader = BufReader::new(&stream);
@@ -84,10 +87,10 @@ fn mdb_command(command: String) -> Result<String, String> {
                     response.push_str(trimmed);
                 }
             }
-            Err(ref e) if
-                e.kind() == std::io::ErrorKind::WouldBlock ||
-                e.kind() == std::io::ErrorKind::TimedOut
-            => {
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
                 break; // done reading
             }
             Err(e) => {
@@ -109,8 +112,7 @@ fn mdb_command(command: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder
-        ::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![mdb_command])
         .run(tauri::generate_context!())

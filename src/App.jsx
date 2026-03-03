@@ -17,7 +17,7 @@ function App() {
   const appendProduct = (product, action) => {
     setSelectedProducts((prev) => {
       const found = prev.find((p) => p.product_id === product.product_id);
-      const isAdd = action == "add";
+      const isAdd = action == "+";
       const countChange = isAdd ? 1 : -1;
       const condition = isAdd ? found : found && found.count > 1;
 
@@ -59,7 +59,7 @@ function App() {
                 product={prod}
                 title={`${prod.product_name} (Qty: ${prod.count})`}
                 selected
-                onRemove={() => appendProduct(prod, "remove")}
+                onRemove={() => appendProduct(prod, "-")}
               />
             ))}
             <PrimaryButton title="Clear All" onClick={() => setSelectedProducts([])} />
@@ -87,7 +87,7 @@ function App() {
         <ProductCard
           key={product.product_id}
           product={product}
-          onClick={() => appendProduct(product, "add")}
+          onClick={() => appendProduct(product, "+")}
         />
       ))}
     </section>
@@ -154,5 +154,6 @@ const styles = {
     maxWidth: "900px",
     margin: "0 auto 2rem auto",
     marginTop: "1rem",
+    marginBottom: "8rem",
   },
 };
