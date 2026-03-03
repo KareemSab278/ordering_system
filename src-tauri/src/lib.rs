@@ -1,120 +1,128 @@
-use serialport::{DataBits, FlowControl, Parity, StopBits};
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
-use std::time::Duration;
-// use serde::Serialize;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
 
-// ── Serial settings per MDB Master RS232 docs ──
-// Baud: 115200, Data: 8, Parity: NONE, Stop: 1, HW flow: RTS/CTS, SW flow: NO
-const BAUD_RATE: u32 = 115200;
-const DAEMON_ADDR: &str = "127.0.0.1:5127";
-const TCP_TIMEOUT_MS: u64 = 1000;
+// ── MDB bridge connection ──────────────────────────────────────────────────────
+// The Python app_vend.py Flask server runs on :8080 and handles all serial
+// communication with the PicoVend EZ Bridge hardware.
+// Tauri acts purely as an HTTP client — no direct serial access needed here.
+const FLASK_BASE: &str = "http://127.0.0.1:8080";
+const API_TOKEN: &str = "supersecret"; // matches API_TOKEN env-var default in app_vend.py
 
-// ─────────────────────────────────────────────────────────────
-// dont use this because react will call api for products.
-
-// #[derive(Serialize)]
-// struct Products {
-//     product_id: u64,
-//     product_name: String,
-//     product_category: String,
-//     product_price: f64,
-//     product_availability: bool,
-// }
-
-// #[tauri::command]
-// fn get_products_json() -> Products {
-//     return Products {
-//         product_id: 1,
-//         product_name: "Example Product".to_string(),
-//         product_category: "Example Category".to_string(),
-//         product_price: 9.99,
-//         product_availability: true,
-//     };
-// }
-
-// ─────────────────────────────────────────────────────────────
-//  HIGH LEVEL MODE — talks to the Python daemon via TCP :5127
-//  Send text commands like CashlessReset(1), get JSON back.
-// ─────────────────────────────────────────────────────────────
-/// Send a text command to the MDB daemon on TCP 5127 and return the JSON response.
-
-#[tauri::command]
-fn mdb_command(command: String) -> Result<String, String> {
-    println!("[TCP] Connecting to daemon at {}", DAEMON_ADDR);
-
-    let stream = TcpStream::connect(DAEMON_ADDR).map_err(|e| {
-        format!(
-            "Cannot connect to MDB daemon at {} — is the Python daemon running? Error: {}",
-            DAEMON_ADDR, e
-        )
-    })?;
-
-    stream
-        .set_read_timeout(Some(Duration::from_millis(TCP_TIMEOUT_MS)))
-        .map_err(|e| format!("Set timeout failed: {}", e))?;
-    stream
-        .set_write_timeout(Some(Duration::from_millis(TCP_TIMEOUT_MS)))
-        .map_err(|e| format!("Set timeout failed: {}", e))?;
-
-    let mut writer = stream
-        .try_clone()
-        .map_err(|e| format!("Clone failed: {}", e))?;
-
-    let msg = format!("{}\n", command.trim());
-    println!("[TCP TX] {}", msg.trim());
-    writer
-        .write_all(msg.as_bytes())
-        .map_err(|e| format!("Write failed: {}", e))?;
-    writer.flush().map_err(|e| format!("Flush failed: {}", e))?;
-
-    let mut reader = BufReader::new(&stream);
-    let mut response = String::new();
-
-    loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => {
-                break;
-            } // EOF
-            Ok(_) => {
-                let trimmed = line.trim();
-                if !trimmed.is_empty() {
-                    println!("[TCP RX] {}", trimmed);
-                    if !response.is_empty() {
-                        response.push('\n');
-                    }
-                    response.push_str(trimmed);
-                }
-            }
-            Err(ref e)
-                if e.kind() == std::io::ErrorKind::WouldBlock
-                    || e.kind() == std::io::ErrorKind::TimedOut =>
-            {
-                break; // done reading
-            }
-            Err(e) => {
-                if response.is_empty() {
-                    return Err(format!("Read failed: {}", e));
-                }
-                break;
-            }
-        }
-    }
-
-    if response.is_empty() {
-        return Err("No response from MDB daemon (timeout)".into());
-    }
-    Ok(response)
+// ── Basket item (matches Flask API format) ────────────────────────────────────
+// `price` is a scaled integer: £1.25 → 125, 50p → 50 (same unit Flask uses)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct BasketItem {
+    id: u32,
+    name: String,
+    price: u32,
+    qty: u32,
 }
 
-// ─────────────────────────────────────────────────────────────
+fn make_client() -> Result<Client, String> {
+    Client::builder()
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))
+}
+
+fn auth_header() -> String {
+    format!("Bearer {}", API_TOKEN)
+}
+
+// ── COMMAND: start contactless payment flow ───────────────────────────────────
+// Calls POST /api/basket/pay on the Flask bridge.
+// Flask spawns a background thread that does RESET→ENABLE→VNDREQ and waits
+// for the customer to tap their card (VNDAPP unsolicited message).
+// Returns {"ok": true} immediately if accepted; the actual approval comes
+// asynchronously — poll get_pay_state until state.pay.approved == true.
+#[tauri::command]
+async fn initiate_payment(slot: u32, items: Vec<BasketItem>) -> Result<String, String> {
+    let client = make_client()?;
+
+    let body = serde_json::json!({
+        "slot": slot,
+        "items": items,
+    });
+
+    let resp = client
+        .post(format!("{}/api/basket/pay", FLASK_BASE))
+        .header("Authorization", auth_header())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| {
+            format!(
+                "Payment request failed — is app_vend.py running on :8080? ({})",
+                e
+            )
+        })?;
+
+    resp.text()
+        .await
+        .map_err(|e| format!("Failed to read payment response: {}", e))
+}
+
+// ── COMMAND: report one item dispensed ───────────────────────────────────────
+// Calls POST /api/basket/dispense.
+// Each call sends VNDSUCC/VNDFAIL for one item and returns:
+//   {"ok": true, "done": false, "remaining": N}  — more items pending
+//   {"ok": true, "done": true,  "remaining": 0}  — basket complete
+// Call in a loop (success=true) until done=true.
+#[tauri::command]
+async fn dispense_item(slot: u32, success: bool) -> Result<String, String> {
+    let client = make_client()?;
+
+    let body = serde_json::json!({
+        "slot": slot,
+        "success": success,
+    });
+
+    let resp = client
+        .post(format!("{}/api/basket/dispense", FLASK_BASE))
+        .header("Authorization", auth_header())
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Dispense request failed: {}", e))?;
+
+    resp.text()
+        .await
+        .map_err(|e| format!("Failed to read dispense response: {}", e))
+}
+
+// ── COMMAND: poll bridge state (used to detect card-tap approval) ─────────────
+// Calls GET /api/state.
+// Key fields the frontend watches:
+//   state.pay.approved    — true once VNDAPP received from card reader
+//   state.pay.in_progress — true while pay_flow thread is running
+//   state.pay.last_status — human-readable status string
+//   state.pay.last_error  — non-empty if something went wrong
+#[tauri::command]
+async fn get_pay_state() -> Result<String, String> {
+    let client = make_client()?;
+
+    let resp = client
+        .get(format!("{}/api/state", FLASK_BASE))
+        .header("Authorization", auth_header())
+        .send()
+        .await
+        .map_err(|e| format!("State request failed: {}", e))?;
+
+    resp.text()
+        .await
+        .map_err(|e| format!("Failed to read state response: {}", e))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![mdb_command])
+        .invoke_handler(tauri::generate_handler![
+            initiate_payment,
+            dispense_item,
+            get_pay_state,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

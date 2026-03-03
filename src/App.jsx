@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "./Components/Modal";
 import { CategoryIndicator } from "./Components/CategoryIndicator";
@@ -15,10 +15,137 @@ function App() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [selectedProducts, setSelectedProducts] = useState([]);
 
+  // Payment flow state
+  // status: "idle" | "paying" | "dispensing" | "done" | "error"
+  const [payStatus, setPayStatus] = useState("idle");
+  const [payMessage, setPayMessage] = useState("");
+
+  const pollRef = useRef(null);
+  const cancelledRef = useRef(false);
+
+  // Cleanup polling on unmount
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+  }, []);
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  };
+
+  // After card approval, send VNDSUCC for every item in the basket.
+  // Flask decrements the pending basket each call; done=true means all clear.
+  const doDispenseAll = async () => {
+    if (cancelledRef.current) return;
+    setPayStatus("dispensing");
+    setPayMessage("Dispensing your items…");
+
+    let more = true;
+    while (more) {
+      if (cancelledRef.current) return;
+      try {
+        const raw = await invoke("dispense_item", { slot: 1, success: true });
+        const res = JSON.parse(raw);
+        if (!res.ok) {
+          setPayStatus("error");
+          setPayMessage(res.error || "Dispense failed");
+          return;
+        }
+        more = !res.done;
+        if (!res.done) setPayMessage(`Dispensing… ${res.remaining} item(s) remaining`);
+      } catch (e) {
+        setPayStatus("error");
+        setPayMessage(`Dispense error: ${e}`);
+        return;
+      }
+    }
+
+    setPayStatus("done");
+    setPayMessage("Payment complete! Thank you.");
+    // Auto-close and clear cart after 3 s
+    setTimeout(() => {
+      if (!cancelledRef.current) {
+        setCheckoutActive(false);
+        setPayStatus("idle");
+        setPayMessage("");
+        setSelectedProducts([]);
+      }
+    }, 3000);
+  };
+
+  // Poll /api/state every 500 ms until the card reader approves (VNDAPP received)
+  const startPolling = () => {
+    pollRef.current = setInterval(async () => {
+      if (cancelledRef.current) { stopPolling(); return; }
+      try {
+        const raw = await invoke("get_pay_state");
+        const state = JSON.parse(raw);
+        const pay = state.pay;
+
+        if (pay.approved) {
+          stopPolling();
+          setPayMessage("Card approved!");
+          doDispenseAll();
+        } else if (!pay.in_progress && pay.last_error) {
+          stopPolling();
+          setPayStatus("error");
+          setPayMessage(pay.last_error || "Payment failed");
+        } else {
+          setPayMessage(pay.last_status || "Tap your contactless card…");
+        }
+      } catch (_) {
+        setPayMessage("Waiting for payment service…");
+      }
+    }, 500);
+  };
+
+  const handleCheckout = async () => {
+    if (selectedProducts.length === 0) return;
+
+    cancelledRef.current = false;
+    setCheckoutActive(true);
+    setPayStatus("paying");
+    setPayMessage("Initiating payment…");
+
+    // React prices are decimal (e.g. 1.25) — Flask expects scaled ints (e.g. 125)
+    const items = selectedProducts.map((p) => ({
+      id: p.product_id,
+      name: p.product_name,
+      price: Math.round(p.product_price * 100),
+      qty: p.count,
+    }));
+
+    try {
+      const raw = await invoke("initiate_payment", { slot: 1, items });
+      const res = JSON.parse(raw);
+      console.log("Payment initiation response:", res);
+      if (!res.ok) {
+        setPayStatus("error");
+        setPayMessage(res.error || "Failed to start payment");
+        return;
+      }
+      setPayMessage("Tap your contactless card to pay…");
+      startPolling();
+    } catch (e) {
+      setPayStatus("error");
+      setPayMessage(`Could not reach payment service: ${e}`);
+    }
+  };
+
+  const handleCheckoutCancel = () => {
+    cancelledRef.current = true;
+    stopPolling();
+    setCheckoutActive(false);
+    setPayStatus("idle");
+    setPayMessage("");
+  };
+
   const appendProduct = (product, action) => {
     setSelectedProducts((prev) => {
       const found = prev.find((p) => p.product_id === product.product_id);
-      const isAdd = action == "+";
+      const isAdd = action === "+";
       const countChange = isAdd ? 1 : -1;
       const condition = isAdd ? found : found && found.count > 1;
 
@@ -37,24 +164,37 @@ function App() {
   };
 
   const categories = ["All", "Drinks", "Snacks", "Food"];
-  const filteredProducts = activeCategory === "All" ? products.filter((prod) => prod.product_availability == true)
-    : products.filter((prod) => prod.product_category === activeCategory && prod.product_availability == true);
+  const filteredProducts =
+    activeCategory === "All"
+      ? products.filter((prod) => prod.product_availability)
+      : products.filter(
+          (prod) => prod.product_category === activeCategory && prod.product_availability,
+        );
 
-  const totalPrice = selectedProducts.reduce((sum, p) => sum + p.product_price * p.count, 0);
+  const totalPrice = selectedProducts.reduce(
+    (sum, p) => sum + p.product_price * p.count,
+    0,
+  );
 
-  const handleCheckoutCancel = () => {
-    setCheckoutActive(false);
-    // cancel payment logic here
-  }
+  const statusIcon = { paying: "💳", dispensing: "⚙️", done: "✅", error: "❌" }[payStatus] ?? "💳";
 
   const checkoutModal = (
     <Modal
       opened={checkoutActive}
-      title="Make Payment"
+      title="Contactless Payment"
       children={
-        <section>
-          Follow card reader instructions to complete payment.
-          <PrimaryButton title="Cancel Payment" onClick={handleCheckoutCancel} />
+        <section style={styles.paymentSection}>
+          <div style={styles.statusIcon}>{statusIcon}</div>
+          <p style={styles.statusMessage}>{payMessage}</p>
+          {(payStatus === "error" || payStatus === "done") && (
+            <PrimaryButton
+              title={payStatus === "done" ? "Close" : "Dismiss"}
+              onClick={handleCheckoutCancel}
+            />
+          )}
+          {payStatus === "paying" && (
+            <PrimaryButton title="Cancel" onClick={handleCheckoutCancel} />
+          )}
         </section>
       }
     />
@@ -115,9 +255,7 @@ function App() {
   const priceStatusPill = (
     <PriceStatusPill
         onModalOpen={() => setModalOpen(true)}
-        onCheckout={() => setCheckoutActive(true)
-          // initiate check out logic (invoke("initiate_checkout", { price: totalPrice }))
-        }
+        onCheckout={handleCheckout}
         totalPrice={totalPrice}
       />
   );
@@ -185,5 +323,24 @@ const styles = {
     margin: "0 auto 2rem auto",
     marginTop: "1rem",
     marginBottom: "8rem",
+  },
+  paymentSection: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "1.2rem",
+    padding: "0.5rem 0 1rem",
+  },
+  statusIcon: {
+    fontSize: "3.5rem",
+    lineHeight: 1,
+  },
+  statusMessage: {
+    textAlign: "center",
+    color: "#d4d4d4",
+    margin: 0,
+    fontSize: "0.95rem",
+    minHeight: "1.4rem",
+    maxWidth: "280px",
   },
 };
