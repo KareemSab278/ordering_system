@@ -462,3 +462,17 @@ Ensure you're calling `POST /api/basket/dispense` after approval.
 - **Error Recovery:** If payment fails at any stage, the basket is cleared and system returns to idle.
 - **Token Security:** In production, change `API_TOKEN` from default "supersecret" to a strong secret.
 
+
+
+sudo apt update
+sudo apt install \
+  libgtk-3-dev \
+  libwebkit2gtk-4.1-dev \
+  libglib2.0-dev \
+  libgdk-pixbuf-2.0-dev \
+  build-essential \
+  pkg-config \
+  libcairo2-dev \
+  libpango1.0-dev \
+  libatk1.0-dev \
+  libx11-dev
