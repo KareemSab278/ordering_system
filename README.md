@@ -463,17 +463,7 @@ Ensure you're calling `POST /api/basket/dispense` after approval.
 - **Token Security:** In production, change `API_TOKEN` from default "supersecret" to a strong secret.
 
 
-
-sudo apt install build-essential pkg-config \
-  libgtk-3-dev \
-  libwebkit2gtk-4.1-dev \
-  libglib2.0-dev \
-  libgdk-pixbuf-2.0-dev \
-  libcairo2-dev \
-  libpango1.0-dev \
-  libatk1.0-dev \
-  libx11-dev
-
-deb http://deb.debian.org/debian trixie main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian-security trixie-security main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian trixie-updates main contrib non-free non-free-firmware
+problem: screen tearing. most likely from gpu issues. 
+something to do with webgl i guess. raspberry pi might not have enough storage ni the gpu, try increasing that.
+if fail then probably do a sudo raspi-config then advanced options then gl driver and select G1 Gl fake kms
+else disable hardware acceleration and do software only.
