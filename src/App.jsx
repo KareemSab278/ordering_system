@@ -23,9 +23,24 @@ function App() {
   const pollRef = useRef(null);
   const cancelledRef = useRef(false);
 
-  // Cleanup polling on unmount
-  useEffect(() => () => {
-    if (pollRef.current) clearInterval(pollRef.current);
+  useEffect(() => {
+    const initializePaymentServer = async () => { // makes the python server run in the background when the app starts
+      try {
+        await invoke("initialize_payment_server");
+        console.log("Payment server initialized successfully.");
+      } catch (e) {
+        setCheckoutActive(true);
+        setPayStatus("error");
+        setPayMessage(`Failed to start payment server: ${e}`);
+        console.error("Error initializing payment server:", e);
+      }
+    };
+
+    initializePaymentServer();
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   const stopPolling = () => {
@@ -35,8 +50,6 @@ function App() {
     }
   };
 
-  // After card approval, send VNDSUCC for every item in the basket.
-  // Flask decrements the pending basket each call; done=true means all clear.
   const doDispenseAll = async () => {
     if (cancelledRef.current) return;
     setPayStatus("dispensing");
@@ -64,7 +77,6 @@ function App() {
 
     setPayStatus("done");
     setPayMessage("Payment complete! Thank you.");
-    // Auto-close and clear cart after 3 s
     setTimeout(() => {
       if (!cancelledRef.current) {
         setCheckoutActive(false);
@@ -75,7 +87,6 @@ function App() {
     }, 3000);
   };
 
-  // Poll /api/state every 500 ms until the card reader approves (VNDAPP received)
   const startPolling = () => {
     pollRef.current = setInterval(async () => {
       if (cancelledRef.current) { stopPolling(); return; }

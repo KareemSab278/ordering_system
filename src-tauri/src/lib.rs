@@ -1,5 +1,6 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::process::Command;
 
 // ── MDB bridge connection ──────────────────────────────────────────────────────
 // The Python app_vend.py Flask server runs on :8080 and handles all serial
@@ -26,6 +27,25 @@ fn make_client() -> Result<Client, String> {
 
 fn auth_header() -> String {
     format!("Bearer {}", API_TOKEN)
+}
+
+// in order to run this command youll need to first run:
+// sudo apt install python3-flask
+#[tauri::command]
+async fn initialize_payment_server() -> Result<(), String> {
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("Failed to determine project root")?
+        .to_path_buf();
+
+    Command::new("python3")
+        .arg("app_vend.py")
+        .current_dir(&project_root)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn payment server: {}", e))?;
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    Ok(())
 }
 
 // ── COMMAND: start contactless payment flow ───────────────────────────────────
@@ -122,6 +142,7 @@ pub fn run() {
             initiate_payment,
             dispense_item,
             get_pay_state,
+            initialize_payment_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
