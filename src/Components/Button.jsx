@@ -6,7 +6,7 @@ const PrimaryButton = ({ title, onClick, color, onDoubleClick = new Function() }
     <section style={{ display: "inline-block", margin: "8px" }}>
       <Button
         variant="filled"
-        size="xs"
+        size="lg"
         radius="xl"
         style={{
           ...styles.primary,
@@ -37,7 +37,7 @@ const RemoveButton = ({ onClick }) => {
     <section style={styles.removeBtnSection}>
       <Button
         variant="outline"
-        size="xs"
+        size="lg"
         radius="xl"
         style={styles.removeBtn}
         onClick={onClick}
@@ -54,10 +54,11 @@ const styles = {
     color: "#fff",
     padding: "10px 15px",
     fontWeight: "bold",
-    fontSize: "1.1rem",
+    fontSize: "1.5rem",
     boxShadow: "0px 2px 10px rgba(0, 0, 0, 0.36)",
     border: "none",
     borderRadius: "24px",
+    height: "50px",
     cursor: "pointer",
     transition: "background 0.2s, box-shadow 0.2s",
   },

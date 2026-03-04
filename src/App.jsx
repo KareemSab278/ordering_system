@@ -2,11 +2,11 @@ import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Modal } from "./Components/Modal";
 import { CategoryIndicator } from "./Components/CategoryIndicator";
-import { products } from "./TestData/products";
 import { ProductCard } from "./Components/ProductCard";
 import { PriceStatusPill } from "./Components/PriceStatusPill";
 import { PrimaryButton } from "./Components/Button";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import * as helpers from "./AppHelpers";
 
 export { App };
 
@@ -17,9 +17,8 @@ function App() {
 
   const [activeCategory, setActiveCategory] = useState("All");
   const [selectedProducts, setSelectedProducts] = useState([]);
+  const [products, setProducts] = useState([]);
 
-  // Payment flow state
-  // status: "idle" | "paying" | "dispensing" | "done" | "error"
   const [payStatus, setPayStatus] = useState("idle");
   const [payMessage, setPayMessage] = useState("");
 
@@ -30,23 +29,30 @@ function App() {
     const timer = setTimeout(() => {
       getCurrentWindow().setFullscreen(true);
     }, 1000);
-
     return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    const initializePaymentServer = async () => { // makes the python server run in the background when the app starts
+    const initializePaymentServer = async () => {
       try {
         await invoke("initialize_payment_server");
-        console.log("Payment server initialized successfully.");
       } catch (e) {
         setCheckoutActive(true);
         setPayStatus("error");
         setPayMessage(`Failed to start payment server: ${e}`);
-        console.error("Error initializing payment server:", e);
       }
     };
 
+    const fetchProducts = async () => {
+      try {
+        const prods = await invoke("query_products");
+        setProducts(prods);
+      } catch (e) {
+        console.error("Error fetching products:", e);
+      }
+    };
+
+    fetchProducts();
     initializePaymentServer();
 
     return () => {
@@ -60,6 +66,7 @@ function App() {
       pollRef.current = null;
     }
   };
+  
 
   const doDispenseAll = async () => {
     if (cancelledRef.current) return;
@@ -88,6 +95,19 @@ function App() {
 
     setPayStatus("done");
     setPayMessage("Payment complete! Thank you.");
+
+    for (const p of selectedProducts) {
+      try {
+        await invoke("insert_order", {
+          productId: p.product_id,
+          quantity: p.count,
+          price: p.product_price * p.count,
+        });
+      } catch (e) {
+        console.error("Failed to save order for product", p.product_id, e);
+      }
+    }
+
     setTimeout(() => {
       if (!cancelledRef.current) {
         setCheckoutActive(false);
@@ -204,9 +224,9 @@ function App() {
       opened={checkoutActive}
       title="Contactless Payment"
       children={
-        <section style={styles.paymentSection}>
-          <div style={styles.statusIcon}>{statusIcon}</div>
-          <p style={styles.statusMessage}>{payMessage}</p>
+        <section style={helpers.styles.paymentSection}>
+          <div style={helpers.styles.statusIcon}>{statusIcon}</div>
+          <p style={helpers.styles.statusMessage}>{payMessage}</p>
           {(payStatus === "error" || payStatus === "done") && (
             <PrimaryButton
               title={payStatus === "done" ? "Close" : "Dismiss"}
@@ -232,7 +252,7 @@ function App() {
             No products selected.
           </div>
         ) : (
-          <section style={styles.productsSection}>
+          <section style={helpers.styles.productsSection}>
             {selectedProducts.map((prod) => (
               <ProductCard
                 key={prod.product_id}
@@ -250,8 +270,8 @@ function App() {
   );
 
   const categoryIndocator = (
-    <div style={styles.topContainer}>
-      <section style={styles.categoryIndicatorContainer}>
+    <div style={helpers.styles.topContainer}>
+      <section style={helpers.styles.categoryIndicatorContainer}>
         <CategoryIndicator
           categories={categories}
           activeCategory={activeCategory}
@@ -262,14 +282,18 @@ function App() {
   );
 
   const productsSection = (
-    <section style={styles.productsSection}>
-      {filteredProducts.map((product) => (
+    <section style={helpers.styles.productsSection}>
+      {products.length > 0 ? filteredProducts.map((product) => (
         <ProductCard
           key={product.product_id}
           product={product}
           onClick={() => appendProduct(product, "+")}
         />
-      ))}
+      )) : (
+        <div style={helpers.styles.noProductsMessage}>
+          No products available.
+        </div>
+      )}
     </section>
   );
 
@@ -289,17 +313,29 @@ function App() {
       children={
         <section>
           <PrimaryButton
-            title="Kill App (Double Click)"
+            title="Exit Fullscreen"
+            onClick={() => getCurrentWindow().setFullscreen(false)}
+          />
+
+          <PrimaryButton
+            title="Enter Fullscreen"
+            onClick={() => getCurrentWindow().setFullscreen(true)}
+          />
+
+          <PrimaryButton
+            title="Kill App"
             style={{ position: "fixed", top: 0, right: 0, width: 60, height: 60, zIndex: 9999 }}
             onDoubleClick={() => invoke("kill_app")}
           />
+
+
         </section>
       }
     />
   );
 
   return (
-    <main style={styles.body}>
+    <main style={helpers.styles.body}>
       {categoryIndocator}
       {productsSection}
       {priceStatusPill}
@@ -313,77 +349,3 @@ function App() {
     </main>
   );
 }
-
-const styles = {
-  body: {
-    background: "#1b2136",
-    color: "#fff",
-    fontFamily:
-      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-    minHeight: "100vh",
-    padding: 0,
-    margin: 0,
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "flex-start",
-    paddingTop: "7rem",
-  },
-  topContainer: {
-    position: "fixed",
-    top: 0,
-    left: "50%",
-    transform: "translateX(-50%)",
-    zIndex: 1100,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#181A20",
-    boxShadow: "0px 2px 15px rgba(0, 0, 0, 0.52)",
-    borderRadius: "50px",
-    padding: "0.5rem 0.5rem",
-    marginTop: "1rem",
-  },
-  header: {
-    width: "100%",
-    textAlign: "center",
-    margin: 0,
-  },
-  categoryIndicatorContainer: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    margin: 0,
-  },
-  productsSection: {
-    display: "flex",
-    flexWrap: "wrap",
-    gap: "1rem",
-    justifyContent: "center",
-    alignItems: "center",
-    width: "100%",
-    maxWidth: "900px",
-    margin: "0 auto 2rem auto",
-    marginTop: "1rem",
-    marginBottom: "8rem",
-  },
-  paymentSection: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    gap: "1.2rem",
-    padding: "0.5rem 0 1rem",
-  },
-  statusIcon: {
-    fontSize: "3.5rem",
-    lineHeight: 1,
-  },
-  statusMessage: {
-    textAlign: "center",
-    color: "#d4d4d4",
-    margin: 0,
-    fontSize: "0.95rem",
-    minHeight: "1.4rem",
-    maxWidth: "280px",
-  },
-};
