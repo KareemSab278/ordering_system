@@ -12,10 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "ordering_system",
-        "fullscreen": true,
-        "width": 1024,
-        "height": 600
+        "title": "ordering_system"
       }
     ],
     "security": {
