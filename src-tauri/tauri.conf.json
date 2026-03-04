@@ -13,10 +13,9 @@
     "windows": [
       {
         "title": "ordering_system",
-        "fullscreen": false,
-        "width": 600,
-        "height": 1024,
-        "resizable": false
+        "fullscreen": true,
+        "width": 1024,
+        "height": 600
       }
     ],
     "security": {
