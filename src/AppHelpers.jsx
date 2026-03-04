@@ -31,6 +31,7 @@ const styles = {
     borderRadius: "50px",
     padding: "0.5rem 0.5rem",
     marginTop: "1rem",
+    maxWidth: "90%",
   },
   header: {
     width: "100%",
@@ -43,7 +44,7 @@ const styles = {
     alignItems: "center",
     margin: 0,
     overflowX: "auto",
-    maxWidth: "500px",
+    maxWidth: "90%",
   },
   noProductsMessage: {
     textAlign: "center",

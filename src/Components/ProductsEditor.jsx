@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { PrimaryButton } from "./Button";
-
+import { OnScreenKeyboard } from "./OnScreenKeyboard";
+import { CATEGORIES } from "../App";
 export { ProductsEditor };
 
-const CATEGORIES = ["Drinks", "Snacks", "Food"];
-
-const EMPTY_FORM = { name: "", category: "Drinks", price: "", availability: true };
+const EMPTY_FORM = { name: "", category: CATEGORIES[0], price: "", availability: true };
 
 const ProductsEditor = ({ onProductsChanged }) => {
   const [products, setProducts] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [status, setStatus] = useState("");
+  const [activeInput, setActiveInput] = useState(null);
 
   const fetchProducts = async () => {
     try {
@@ -82,6 +82,7 @@ const ProductsEditor = ({ onProductsChanged }) => {
           style={styles.input}
           placeholder="Name"
           value={form.name}
+          onFocus={() => setActiveInput("name")}
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
         <select
@@ -98,6 +99,7 @@ const ProductsEditor = ({ onProductsChanged }) => {
           min="0"
           step="0.01"
           value={form.price}
+          onFocus={() => setActiveInput("price")}
           onChange={(e) => setForm({ ...form, price: e.target.value })}
         />
         <label style={styles.checkLabel}>
@@ -111,6 +113,15 @@ const ProductsEditor = ({ onProductsChanged }) => {
         <PrimaryButton title="Add Product" onClick={handleAdd} />
         {status && <p style={styles.status}>{status}</p>}
       </div>
+
+      {activeInput && (
+        <OnScreenKeyboard
+          value={activeInput === "name" ? form.name : form.price}
+          onChange={(val) => setForm((prev) => ({ ...prev, [activeInput]: val }))}
+          onClose={() => setActiveInput(null)}
+          numericOnly={activeInput === "price"}
+        />
+      )}
     </div>
   );
 };
@@ -183,7 +194,7 @@ const styles = {
     background: "#2a2a2a",
     border: "1px solid #444",
     borderRadius: "0.4rem",
-    color: "#000000",
+    color: "#fff",
     padding: "0.5rem 0.7rem",
     fontSize: "0.9rem",
     outline: "none",

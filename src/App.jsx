@@ -9,7 +9,9 @@ import { ProductsEditor } from "./Components/ProductsEditor";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as helpers from "./AppHelpers";
 
-export { App };
+export { App, CATEGORIES };
+  
+const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "drugs", "questionable"];
 
 function App() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -28,7 +30,7 @@ function App() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      getCurrentWindow().setFullscreen(true);
+      getCurrentWindow().setFullscreen(false);
     }, 1000);
     return () => clearTimeout(timer);
   }, []);
@@ -205,7 +207,7 @@ function App() {
     });
   };
 
-  const categories = ["All", "Drinks", "Snacks", "Food", "drugs", "questionable"];
+
   const filteredProducts =
     activeCategory === "All"
       ? products.filter((prod) => prod.product_availability)
@@ -274,7 +276,7 @@ function App() {
     <div style={helpers.styles.topContainer}>
       <section style={helpers.styles.categoryIndicatorContainer}>
         <CategoryIndicator
-          categories={categories}
+          categories={CATEGORIES}
           activeCategory={activeCategory}
           onCategoryClick={setActiveCategory}
         />
