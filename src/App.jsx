@@ -5,19 +5,22 @@ import { CategoryIndicator } from "./Components/CategoryIndicator";
 import { ProductCard } from "./Components/ProductCard";
 import { PriceStatusPill } from "./Components/PriceStatusPill";
 import { PrimaryButton } from "./Components/Button";
-import { ProductsEditor } from "./Components/ProductsEditor";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as helpers from "./AppHelpers";
 
 export { App, CATEGORIES };
 
 const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Drugs", "Questionable"];
-const INITIAL_FULLSCREEN_STATE = false;
+const INITIAL_STATE_FULLSCREEN = true;
 
 function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [checkoutActive, setCheckoutActive] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [fullScreenState, setFullScreenState] = useState(
+    INITIAL_STATE_FULLSCREEN,
+  );
 
   const [activeCategory, setActiveCategory] = useState("All");
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -25,25 +28,10 @@ function App() {
 
   const [payStatus, setPayStatus] = useState("idle");
   const [payMessage, setPayMessage] = useState("");
+  const [editorUrl, setEditorUrl] = useState("");
 
   const pollRef = useRef(null);
   const cancelledRef = useRef(false);
-
-  const fetchProducts = async () => {
-    try {
-      const prods = await invoke("query_products");
-      setProducts(prods);
-    } catch (e) {
-      console.error("Error fetching products:", e);
-    }
-  };
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      getCurrentWindow().setFullscreen(INITIAL_FULLSCREEN_STATE);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
 
   useEffect(() => {
     const initializePaymentServer = async () => {
@@ -64,20 +52,56 @@ function App() {
       }
     };
 
+    const fetchEditorUrl = async () => {
+      try {
+        const editorUrlRaw = await invoke("return_editor_url");
+        setEditorUrl(editorUrlRaw);
+      } catch (e) {
+        console.error("Failed to fetch editor URL:", e);
+      }
+    };
+
+    fetchEditorUrl();
     initializeStaticServer();
     fetchProducts();
     initializePaymentServer();
 
+    const timer = setTimeout(() => {
+      getCurrentWindow().setFullscreen(INITIAL_STATE_FULLSCREEN);
+    }, 1000);
+
     return () => {
+      clearTimeout(timer);
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  const fetchProducts = async () => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const prods = await invoke("query_products");
+        setProducts(prods);
+      } catch (e) {
+        console.error("Failed to fetch products:", e);
+      }
+    }, 6000);
+  };
 
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+  };
+
+  const toggleFullScreen = () => {
+    const newFullScreenState = !fullScreenState;
+    setFullScreenState(newFullScreenState);
+    getCurrentWindow().setFullscreen(newFullScreenState);
+  };
+
+  const openEditor = () => {
+    openUrl(editorUrl);
   };
 
   const doDispenseAll = async () => {
@@ -229,22 +253,15 @@ function App() {
             prod.product_availability,
         );
 
-  const totalPrice = selectedProducts.reduce(
-    (sum, p) => sum + p.product_price * p.count,
-    0,
-  );
-
-  const statusIcon =
-    { paying: "💳", dispensing: "⚙️", done: "✅", error: "❌" }[payStatus] ??
-    "💳";
-
   const checkoutModal = (
     <Modal
       opened={checkoutActive}
       title="Contactless Payment"
       children={
         <section style={helpers.styles.paymentSection}>
-          <div style={helpers.styles.statusIcon}>{statusIcon}</div>
+          <div style={helpers.styles.statusIcon}>
+            {helpers.statusIcon(payStatus)}
+          </div>
           <p style={helpers.styles.statusMessage}>{payMessage}</p>
           {(payStatus === "error" || payStatus === "done") && (
             <PrimaryButton
@@ -330,7 +347,7 @@ function App() {
     <PriceStatusPill
       onModalOpen={() => setModalOpen(true)}
       onCheckout={handleCheckout}
-      totalPrice={totalPrice}
+      totalPrice={helpers.totalPrice(selectedProducts)}
     />
   );
 
@@ -343,23 +360,16 @@ function App() {
       children={
         <section>
           <PrimaryButton
-            title="Exit Fullscreen"
-            onClick={() => getCurrentWindow().setFullscreen(false)}
+            title={fullScreenState ? "Exit Full Screen" : "Enter Full Screen"}
+            onClick={toggleFullScreen}
           />
           <PrimaryButton
-            title="Enter Fullscreen"
-            onClick={() => getCurrentWindow().setFullscreen(true)}
-          />
-          <PrimaryButton
-            title="Kill App"
+            title="Kill App (Double Click)"
             onDoubleClick={() => invoke("kill_app")}
           />
-          <PrimaryButton
-            title="Refresh Products"
-            onClick={fetchProducts}
-          />
-
-          <ProductsEditor onProductsChanged={fetchProducts} />
+          <PrimaryButton title="Refresh Products" onClick={fetchProducts} />
+          <PrimaryButton title="Open Products Editor" onClick={openEditor} />
+          <p>Editor Url Active at: {editorUrl}</p>
         </section>
       }
     />
@@ -373,15 +383,7 @@ function App() {
       {checkoutModal}
       {selectedProductsModal}
       <div
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          width: 60,
-          height: 60,
-          zIndex: 9999,
-          opacity: 0,
-        }}
+        style={helpers.styles.adminTrigger}
         onDoubleClick={() => setAdminModalOpen(true)}
       />
       {adminModal}

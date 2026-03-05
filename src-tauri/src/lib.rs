@@ -1,11 +1,12 @@
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 use std::process::Command;
 use std::sync::Mutex;
 
 static SERVER_PROCESS: Mutex<Option<std::process::Child>> = Mutex::new(None);
 
 mod database;
+mod server;
 
 const FLASK_BASE: &str = "http://127.0.0.1:8080";
 const API_TOKEN: &str = "supersecret";
@@ -34,15 +35,24 @@ fn auth_header() -> String {
 
 #[tauri::command]
 async fn initialize_orders_database() -> Result<(), String> {
-    database::initialize_orders_database()
+    database
+        ::initialize_orders_database()
         .map_err(|e| format!("Database initialization failed: {}", e))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+async fn return_editor_url() -> String {
+    server::return_editor_url()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
 async fn initialize_products_database() -> Result<(), String> {
-    database::initialize_products_database()
+    database
+        ::initialize_products_database()
         .map_err(|e| format!("Products database initialization failed: {}", e))
 }
 
@@ -50,7 +60,8 @@ async fn initialize_products_database() -> Result<(), String> {
 
 #[tauri::command]
 async fn insert_order(product_id: i32, quantity: i32, price: f64) -> Result<(), String> {
-    database::insert_order(product_id, quantity, price)
+    database
+        ::insert_order(product_id, quantity, price)
         .map_err(|e| format!("Failed to add order: {}", e))
 }
 
@@ -65,7 +76,8 @@ async fn query_products() -> Result<Vec<database::Product>, String> {
 
 #[tauri::command]
 async fn initialize_payment_server() -> Result<(), String> {
-    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let project_root = std::path::PathBuf
+        ::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or("Failed to determine project root")?
         .to_path_buf();
@@ -83,7 +95,7 @@ async fn initialize_payment_server() -> Result<(), String> {
 #[tauri::command]
 async fn initialize_static_page_server() -> Result<(), String> {
     let mut handle = SERVER_PROCESS.lock().map_err(|e| e.to_string())?;
-    
+
     // Kill existing server if running
     if let Some(mut child) = handle.take() {
         let _ = child.kill();
@@ -112,18 +124,12 @@ async fn initiate_payment(slot: u32, items: Vec<BasketItem>) -> Result<String, S
         .post(format!("{}/api/basket/pay", FLASK_BASE))
         .header("Authorization", auth_header())
         .json(&body)
-        .send()
-        .await
+        .send().await
         .map_err(|e| {
-            format!(
-                "Payment request failed — is app_vend.py running on :8080? ({})",
-                e
-            )
+            format!("Payment request failed — is app_vend.py running on :8080? ({})", e)
         })?;
 
-    resp.text()
-        .await
-        .map_err(|e| format!("Failed to read payment response: {}", e))
+    resp.text().await.map_err(|e| format!("Failed to read payment response: {}", e))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,15 +139,11 @@ async fn new_product(
     product_name: &str,
     product_category: &str,
     product_price: f64,
-    product_availability: bool,
+    product_availability: bool
 ) -> Result<(), String> {
-    database::new_product(
-        product_name,
-        product_category,
-        product_price,
-        product_availability,
-    )
-    .map_err(|e| format!("Failed to add new product: {}", e))
+    database
+        ::new_product(product_name, product_category, product_price, product_availability)
+        .map_err(|e| format!("Failed to add new product: {}", e))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -166,13 +168,10 @@ async fn dispense_item(slot: u32, success: bool) -> Result<String, String> {
         .post(format!("{}/api/basket/dispense", FLASK_BASE))
         .header("Authorization", auth_header())
         .json(&body)
-        .send()
-        .await
+        .send().await
         .map_err(|e| format!("Dispense request failed: {}", e))?;
 
-    resp.text()
-        .await
-        .map_err(|e| format!("Failed to read dispense response: {}", e))
+    resp.text().await.map_err(|e| format!("Failed to read dispense response: {}", e))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -184,17 +183,15 @@ async fn get_pay_state() -> Result<String, String> {
     let resp = client
         .get(format!("{}/api/state", FLASK_BASE))
         .header("Authorization", auth_header())
-        .send()
-        .await
+        .send().await
         .map_err(|e| format!("State request failed: {}", e))?;
 
-    resp.text()
-        .await
-        .map_err(|e| format!("Failed to read state response: {}", e))
+    resp.text().await.map_err(|e| format!("Failed to read state response: {}", e))
 }
 
 #[tauri::command]
-async fn kill_app() -> Result<(), String> { // kills the server and exits the app
+async fn kill_app() -> Result<(), String> {
+    // kills the server and exits the app
     if let Ok(mut handle) = SERVER_PROCESS.lock() {
         if let Some(mut child) = handle.take() {
             let _ = child.kill();
@@ -207,26 +204,30 @@ async fn kill_app() -> Result<(), String> { // kills the server and exits the ap
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    tauri::Builder
+        ::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![
-            dispense_item,
-            // Flask bridge commands & Payment
-            initiate_payment,
-            get_pay_state,
-            initialize_payment_server,
-            // DB related commands
-            initialize_orders_database,
-            initialize_products_database,
-            insert_order,
-            query_products,
-            // Product management
-            delete_product,
-            new_product,
-            // Utility
-            kill_app,
-            initialize_static_page_server,
-        ])
+        .invoke_handler(
+            tauri::generate_handler![
+                dispense_item,
+                // Flask bridge commands & Payment
+                initiate_payment,
+                get_pay_state,
+                initialize_payment_server,
+                // DB related commands
+                initialize_orders_database,
+                initialize_products_database,
+                insert_order,
+                query_products,
+                // Product management
+                delete_product,
+                new_product,
+                // Utility
+                kill_app,
+                initialize_static_page_server,
+                return_editor_url
+            ]
+        )
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
         .run(|_app_handle, event| {

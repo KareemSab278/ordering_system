@@ -1,6 +1,27 @@
-export { styles };
+export { styles, statusIcon, totalPrice, filteredProducts };
 
+const statusIcon = (payStatus) => {
+  return (
+    { paying: "💳", dispensing: "⚙️", done: "✅", error: "❌" }[payStatus] ??
+    "💳"
+  );
+};
 
+const totalPrice = (selectedProducts) => {
+  return selectedProducts.reduce(
+    (sum, p) => sum + p.product_price * p.count,
+    0,
+  );
+};
+
+const filteredProducts = (products, activeCategory) => {
+  return activeCategory === "All"
+    ? products.filter((prod) => prod.product_availability)
+    : products.filter(
+        (prod) =>
+          prod.product_category === activeCategory && prod.product_availability,
+      );
+};
 
 const styles = {
   body: {
@@ -70,6 +91,16 @@ const styles = {
     alignItems: "center",
     gap: "1.2rem",
     padding: "0.5rem 0 1rem",
+  },
+  adminTrigger: {
+    position: "fixed",
+    top: 0,
+    right: 0,
+    width: 60,
+    height: 60,
+    zIndex: 9999,
+    opacity: 0,
+    color: "red",
   },
   statusIcon: {
     fontSize: "3.5rem",

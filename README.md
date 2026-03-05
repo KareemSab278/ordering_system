@@ -1,245 +1,1134 @@
 # Coinadrink Ordering System
 
-A contactless card payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic & hardware communication).
-// in order to run this command youll need to first run:
-// sudo apt install python3-flask python3-serial
-
-if building on pc then please run sudo apt install gcc-aarch64-linux-gnu first nneayse pi is arm64
-then rustup target add aarch64-unknown-linux-gnu
-npm run tauri build -- --target aarch64-unknown-linux-gnu
-
-otherwise just build on the pi directly
-
-## System Architecture
-
-```
-React App (Frontend)
-  |
-  | HTTP (invoke commands)
-  |
-Tauri Bridge (lib.rs)
-  |
-  | HTTP POST/GET
-  |
-Flask Server (app_vend.py)
-  |
-  | Serial (MDB Protocol)
-  |
-Card Reader Hardware (PicoVend EZ Bridge)
-```
-
-### Component Overview
-
-| Component | Role |
-|-----------|------|
-| **React App** (src/App.jsx) | Product selection UI, payment status display, cart management |
-| **Tauri Bridge** (src-tauri/src/lib.rs) | HTTP client that calls Flask endpoints, exposes commands to React |
-| **Flask Server** (app_vend.py) | Core payment orchestration, serial communication with card reader, basket state tracking |
-| **MDB Hardware** | Physical card reader that processes payments (PicoVend EZ Bridge) |
+A contactless card payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic and hardware communication).
 
 ---
 
-## Payment Flow: Technical Overview
+## Table of Contents
 
-### 1. User Selects Products (React)
+1. [System Architecture](#system-architecture)
+2. [Directory Structure](#directory-structure)
+3. [Component Breakdown](#component-breakdown)
+   - [Frontend (React)](#frontend-react)
+   - [Tauri Bridge (Rust)](#tauri-bridge-rust)
+   - [Axum Product Editor Server (Rust)](#axum-product-editor-server-rust)
+   - [Flask Payment Server (Python)](#flask-payment-server-python)
+   - [SQLite Databases](#sqlite-databases)
+4. [Data Flow](#data-flow)
+   - [Application Startup](#application-startup)
+   - [Product Selection](#product-selection)
+   - [Payment Flow (Technical)](#payment-flow-technical)
+   - [Payment Flow (Customer Perspective)](#payment-flow-customer-perspective)
+   - [Product Management (Admin)](#product-management-admin)
+5. [State Flow Diagram](#state-flow-diagram)
+6. [MDB Protocol Commands](#mdb-protocol-commands)
+7. [API Reference](#api-reference)
+   - [Flask Endpoints](#flask-endpoints)
+   - [Axum Product Editor Endpoints](#axum-product-editor-endpoints)
+   - [Tauri Commands](#tauri-commands)
+8. [Database Schema](#database-schema)
+9. [Configuration](#configuration)
+10. [Build Instructions](#build-instructions)
+    - [Prerequisites](#prerequisites)
+    - [Backend Setup (Flask)](#backend-setup-flask)
+    - [Frontend and Tauri Setup](#frontend-and-tauri-setup)
+    - [Cross-Compilation for Raspberry Pi](#cross-compilation-for-raspberry-pi)
+11. [Troubleshooting](#troubleshooting)
+12. [Development Notes](#development-notes)
 
-- User taps product cards to add items
-- Each product is added to the `selectedProducts` array with quantity
-- Prices stored as decimals (e.g., £1.25)
+---
 
-### 2. User Initiates Checkout
+## System Architecture
 
-React calls `handleCheckout()`:
+The system is composed of four layers that communicate over HTTP and serial:
 
-```javascript
-const items = selectedProducts.map((p) => ({
-  id: p.product_id,
-  name: p.product_name,
-  price: Math.round(p.product_price * 100),  // Convert to pence
-  qty: p.count,
-}));
-
-await invoke("initiate_payment", { slot: 1, items });
+```
++-------------------------------------------+
+|          React App (Frontend)             |
+|  src/App.jsx, src/Components/*            |
+|  Product selection, cart, payment status   |
++-------------------------------------------+
+          |                         ^
+          | invoke() commands       | return values
+          v                         |
++-------------------------------------------+
+|        Tauri Bridge (lib.rs)              |
+|  src-tauri/src/lib.rs                     |
+|  HTTP client to Flask, DB access,         |
+|  spawns Flask + Axum servers              |
++-------------------------------------------+
+    |              |              |
+    | HTTP         | HTTP         | Direct fn call
+    | POST/GET     | POST/GET     |
+    v              v              v
++----------------+ +------------+ +-------------------+
+| Flask Server   | | Axum       | | SQLite Databases  |
+| app_vend.py    | | server.rs  | | database.rs       |
+| Payment logic, | | Product    | | products.db       |
+| serial comms   | | editor API | | ordering_system_  |
+| port 8080      | | + static   | |   data.db         |
+|                | | HTML page  | |                   |
+|                | | port 3000  | |                   |
++----------------+ +------------+ +-------------------+
+    |
+    | Serial (MDB Protocol)
+    v
++-------------------------------------------+
+|   Card Reader Hardware                    |
+|   PicoVend EZ Bridge                     |
++-------------------------------------------+
 ```
 
-State changes to: `payStatus = "paying"`, `payMessage = "Initiating payment..."`
+### Layer Responsibilities
 
-### 3. Tauri Calls Flask
+| Layer | Files | Responsibility |
+|-------|-------|----------------|
+| React Frontend | `src/App.jsx`, `src/AppHelpers.jsx`, `src/Components/*`, `src/main.jsx` | Product browsing, cart management, payment status display, admin panel |
+| Tauri Bridge | `src-tauri/src/lib.rs` | Exposes Rust functions as commands callable from React via `invoke()`. Manages HTTP calls to Flask, direct SQLite access, process lifecycle for Flask and Axum servers |
+| Axum Server | `src-tauri/src/server.rs` | Standalone HTTP server on port 3000 serving a static HTML product editor page and REST API for CRUD operations on the products database |
+| Flask Server | `app_vend.py` | Payment orchestration, serial communication with the MDB card reader, basket state tracking, dispense acknowledgment |
+| Database Layer | `src-tauri/src/database.rs` | All SQLite read/write operations for both the products database and the orders database |
 
-The `initiate_payment` Tauri command (lib.rs) makes:
+---
+
+## Directory Structure
 
 ```
-POST http://127.0.0.1:8080/api/basket/pay
-Authorization: Bearer supersecret
-Body: {
+ordering_system/
+|
+|-- app_vend.py                  Flask payment server (Python)
+|-- app_vend_requirements.txt    Python dependencies for Flask server
+|-- package.json                 Node.js project config (Vite + React)
+|-- vite.config.js               Vite bundler configuration
+|-- index.html                   Vite entry HTML (loads React app)
+|-- README.md                    This file
+|
+|-- src/                         React frontend source
+|   |-- main.jsx                 React entry point, renders App inside MantineProvider
+|   |-- App.jsx                  Main application component (state, logic, layout)
+|   |-- AppHelpers.jsx           Helper functions and style definitions
+|   |-- Components/
+|       |-- Button.jsx           PrimaryButton and RemoveButton components
+|       |-- CategoryIndicator.jsx Category tab bar with floating indicator
+|       |-- Modal.jsx            Generic modal overlay component
+|       |-- PriceStatusPill.jsx  Fixed bottom bar with cart view and checkout buttons
+|       |-- ProductCard.jsx      Individual product display card
+|
+|-- src-tauri/                   Tauri (Rust) backend
+|   |-- Cargo.toml               Rust dependencies
+|   |-- tauri.conf.json          Tauri application configuration
+|   |-- build.rs                 Tauri build script
+|   |-- capabilities/
+|   |   |-- default.json         Tauri permissions (window fullscreen, opener, core)
+|   |-- src/
+|       |-- main.rs              Rust entry point, calls lib::run()
+|       |-- lib.rs               Tauri command definitions, server process management
+|       |-- database.rs          SQLite database operations (products + orders)
+|       |-- server.rs            Axum HTTP server for product editor (port 3000)
+|       |-- static/
+|           |-- index.html       Product editor admin page (served by Axum)
+|
+|-- public/                      Vite static assets
+|-- vcpkg/                       C++ package manager (dependency of rusqlite/libsqlite3-sys)
+```
+
+---
+
+## Component Breakdown
+
+### Frontend (React)
+
+#### Entry Point: `src/main.jsx`
+
+Mounts the React application inside a MantineProvider (UI component library) and renders the `App` component into the DOM element with id `root`.
+
+#### Main Component: `src/App.jsx`
+
+This is the central component managing all application state and orchestrating user interactions. It contains no routing; the entire application is a single view with modal overlays.
+
+**State variables:**
+
+| Variable | Type | Purpose |
+|----------|------|---------|
+| `modalOpen` | boolean | Controls visibility of the selected products (cart) modal |
+| `checkoutActive` | boolean | Controls visibility of the payment modal |
+| `adminModalOpen` | boolean | Controls visibility of the admin panel modal |
+| `fullScreenState` | boolean | Tracks whether the window is in fullscreen mode |
+| `activeCategory` | string | Currently selected product category filter |
+| `selectedProducts` | array | Products added to the cart, each with a `count` field |
+| `products` | array | All products fetched from the database |
+| `payStatus` | string | Current payment state: `"idle"`, `"paying"`, `"dispensing"`, `"done"`, or `"error"` |
+| `payMessage` | string | Human-readable payment status message displayed in the checkout modal |
+| `editorUrl` | string | URL of the Axum product editor server (displayed in admin panel) |
+
+**Refs:**
+
+| Ref | Purpose |
+|-----|---------|
+| `pollRef` | Holds the interval ID for payment state polling or product refresh polling |
+| `cancelledRef` | Boolean flag to signal cancellation of an in-progress payment flow |
+
+**Categories:**
+
+The constant `CATEGORIES` defines the available filter tabs: `["All", "Drinks", "Snacks", "Food", "Drugs", "Questionable"]`. These must match the category values stored in the products database.
+
+**Key functions:**
+
+| Function | Description |
+|----------|-------------|
+| `fetchProducts` | Sets up a 6-second polling interval that calls the `query_products` Tauri command to refresh the product list from the database |
+| `stopPolling` | Clears the active polling interval |
+| `toggleFullScreen` | Toggles the Tauri window between fullscreen and windowed mode |
+| `openEditor` | Opens the product editor URL in the system browser using the Tauri opener plugin |
+| `doDispenseAll` | After payment approval, loops calling `dispense_item` for each basket item until all are dispensed. Then saves each item as an order in the orders database via `insert_order` |
+| `startPolling` | Begins 500ms polling of `get_pay_state` to monitor payment progress. On approval, triggers `doDispenseAll`. On error, updates status |
+| `handleCheckout` | Initiates the payment flow: sets paying state, converts product prices to pence (integer), calls `initiate_payment`, and starts polling on success |
+| `handleCheckoutCancel` | Cancels an in-progress payment: sets the cancellation flag, stops polling, closes the modal, resets state |
+| `appendProduct(product, action)` | Adds (`"+"`) or removes (`"-"`) a product from the cart. Increments/decrements count for existing items, adds new items with count 1, removes items when count reaches 0 |
+
+**Layout structure:**
+
+The component renders five sections:
+1. `categoryIndicator` -- Fixed top bar with category filter tabs
+2. `productsSection` -- Grid of product cards filtered by active category and availability
+3. `priceStatusPill` -- Fixed bottom bar with "View Cart" and "Checkout" buttons showing total price
+4. `checkoutModal` -- Payment progress modal with status icon, message, and action buttons
+5. `selectedProductsModal` -- Cart modal showing selected products with quantity and remove controls
+6. `adminModal` -- Admin panel modal (triggered by double-clicking a hidden div in the top-right corner) with fullscreen toggle, kill app, refresh products, and editor link
+
+#### Helper Module: `src/AppHelpers.jsx`
+
+Exports four items:
+
+| Export | Type | Description |
+|--------|------|-------------|
+| `statusIcon(payStatus)` | function | Returns an emoji icon string based on payment status. `"paying"` returns a card icon, `"dispensing"` returns a gear icon, `"done"` returns a checkmark, `"error"` returns a cross |
+| `totalPrice(selectedProducts)` | function | Reduces the selected products array to a total price by summing `product_price * count` for each item |
+| `filteredProducts(products, activeCategory)` | function | Filters the product array by category and availability. Note: this function is defined here but the actual filtering in `App.jsx` is done inline rather than calling this function |
+| `styles` | object | Contains all style objects used throughout the application. Defines layout for the body, top container, products section, payment section, admin trigger, status icon, and status message |
+
+#### Components
+
+**`src/Components/Button.jsx`**
+
+Exports two components:
+- `PrimaryButton` -- A Mantine `Button` with a filled variant, extra-large size, rounded corners, and hover effects. Accepts `title`, `onClick`, `color`, and `onDoubleClick` props. The hover effect dynamically calculates a semi-transparent version of the provided color.
+- `RemoveButton` -- A Mantine outline `Button` styled as a small circular button displaying a cross icon. Used on product cards in the cart to decrement/remove items.
+
+**`src/Components/CategoryIndicator.jsx`**
+
+Renders a horizontal scrollable row of `PrimaryButton` components, one per category. The active category button is colored blue (`#3e73ef`), others are gray. Includes a Mantine `FloatingIndicator` positioned at the bottom of the active category (though its positioning is CSS-based and may not perfectly track dynamic widths).
+
+**`src/Components/Modal.jsx`**
+
+A generic modal overlay component. When `opened` is true, renders a fixed full-viewport dark overlay. Clicking the overlay calls `closed`. The inner content area stops click propagation. Accepts `title`, `children`, and optional `innerStyle` for width overrides.
+
+**`src/Components/PriceStatusPill.jsx`**
+
+A fixed bottom bar containing two buttons: "View Cart" (calls `onModalOpen`) and "Checkout" (calls `onCheckout`). The checkout button displays the total price formatted with a dollar sign. Note: the currency symbol here is `$` while the rest of the application uses GBP. This is a display inconsistency in the component.
+
+**`src/Components/ProductCard.jsx`**
+
+Renders an individual product as a rounded card. Displays the product name (truncated to 20 characters if longer) and price in GBP. When the `selected` prop is true, a `RemoveButton` is rendered. Clicking the card calls `onClick` with the product object.
+
+---
+
+### Tauri Bridge (Rust)
+
+#### Entry Point: `src-tauri/src/main.rs`
+
+Suppresses the Windows console window in release builds and calls `ordering_system_lib::run()`.
+
+#### Command Definitions: `src-tauri/src/lib.rs`
+
+This file defines all Tauri commands that the React frontend can call via `invoke()`. It also manages server process lifecycle.
+
+**Constants:**
+
+| Constant | Value | Purpose |
+|----------|-------|---------|
+| `FLASK_BASE` | `"http://127.0.0.1:8080"` | Base URL for the Flask payment server |
+| `API_TOKEN` | `"supersecret"` | Bearer token sent to Flask for authentication |
+
+**Globals:**
+
+| Global | Type | Purpose |
+|--------|------|---------|
+| `SERVER_PROCESS` | `Mutex<Option<Child>>` | Holds the child process handle for the Axum server so it can be killed on shutdown |
+
+**Helper functions:**
+
+| Function | Description |
+|----------|-------------|
+| `make_client()` | Builds a `reqwest::Client` for HTTP requests |
+| `auth_header()` | Returns the authorization header string `"Bearer supersecret"` |
+
+**Registered Tauri commands** (in order of registration in `generate_handler!`):
+
+| Command | Parameters | Return | Description |
+|---------|-----------|--------|-------------|
+| `dispense_item` | `slot: u32, success: bool` | `Result<String, String>` | POSTs to Flask `/api/basket/dispense` to report one item dispensed |
+| `initiate_payment` | `slot: u32, items: Vec<BasketItem>` | `Result<String, String>` | POSTs to Flask `/api/basket/pay` with basket items to start payment |
+| `get_pay_state` | none | `Result<String, String>` | GETs Flask `/api/state` to poll payment progress |
+| `initialize_payment_server` | none | `Result<(), String>` | Spawns `app_vend.py` as a child process using Python, waits 2 seconds for startup |
+| `initialize_orders_database` | none | `Result<(), String>` | Creates the orders database and table if they do not exist |
+| `initialize_products_database` | none | `Result<(), String>` | Creates the products database and table if they do not exist |
+| `insert_order` | `product_id: i32, quantity: i32, price: f64` | `Result<(), String>` | Inserts an order record into the orders database |
+| `query_products` | none | `Result<Vec<Product>, String>` | Returns all products from the products database |
+| `delete_product` | `product_id: i32` | `Result<(), String>` | Deletes a product by ID from the products database |
+| `new_product` | `product_name, product_category, product_price, product_availability` | `Result<(), String>` | Inserts a new product into the products database |
+| `kill_app` | none | `Result<(), String>` | Kills the Axum server child process (if running) and exits the application with `std::process::exit(0)` |
+| `initialize_static_page_server` | none | `Result<(), String>` | Spawns `cargo run --bin server` as a child process to start the Axum product editor server. Kills any previously running instance first |
+| `return_editor_url` | none | `String` | Returns the Axum server URL by calling `server::return_editor_url()` |
+
+**BasketItem struct:**
+
+```rust
+struct BasketItem {
+    id: u32,
+    name: String,
+    price: u32,     // Price in pence (integer)
+    qty: u32,
+}
+```
+
+**Shutdown behavior:**
+
+When the Tauri `RunEvent::Exit` event fires, the application kills the Axum server child process if it is still running.
+
+---
+
+### Axum Product Editor Server (Rust)
+
+#### File: `src-tauri/src/server.rs`
+
+A standalone Axum HTTP server that runs on port 3000. It serves two purposes:
+1. Hosts a static HTML page for product administration
+2. Provides a REST API for product CRUD operations
+
+The server is compiled as a separate binary target (`server`) and spawned as a child process by `lib.rs`.
+
+**Server startup:**
+
+The `main()` function builds an Axum router with:
+- `GET /products` -- Returns all products as JSON
+- `POST /products` -- Creates a new product
+- `DELETE /products/:id` -- Deletes a product by ID
+- `PUT /products/:id` -- Updates a product by ID
+- Fallback: Serves static files from `src-tauri/src/static/` (the product editor HTML page)
+
+The server binds to `0.0.0.0:3000` and prints the local network IP so other devices on the network can access the editor.
+
+**`return_editor_url()`:**
+
+Determines the machine's local IP address by creating a UDP socket, connecting to `8.8.8.8:80` (Google DNS, no actual data sent), and reading the local address. Returns `http://<local_ip>:3000`.
+
+**Request/Response types:**
+
+```rust
+struct NewProduct {
+    product_name: String,
+    product_category: String,
+    product_price: f64,
+    product_availability: bool,
+}
+```
+
+#### Static Admin Page: `src-tauri/src/static/index.html`
+
+A self-contained HTML page with embedded CSS and JavaScript (no build step required). Provides a dark-themed product management interface.
+
+**Features:**
+- Displays all products in a table with ID, name, category, price, availability status (as colored pills), and action buttons
+- Add product form with name, category dropdown, price input (with validation for positive decimal numbers with up to 2 decimal places), and availability checkbox
+- Edit mode: clicking the edit button on a product row populates the form with that product's data and changes the form title to "Edit Product"
+- Delete confirmation dialog before removing a product
+- Status messages for success and error states
+
+**JavaScript functions:**
+
+| Function | Description |
+|----------|-------------|
+| `loadProducts()` | Fetches `GET /products` and stores the result, then calls `renderTable()` |
+| `renderTable()` | Rebuilds the table body HTML from the products array |
+| `esc(str)` | HTML-escapes ampersands, less-than, and greater-than characters |
+| `validatePrice(val)` | Returns a parsed float if the value is a valid non-negative number with up to 2 decimal places, otherwise returns null |
+| `setStatus(msg, ok)` | Updates the status text element with a message and applies green (ok) or red (error) styling |
+| `startEdit(id)` | Finds the product by ID and populates the form fields for editing |
+| `cancelEdit()` | Resets the form to its default "Add Product" state |
+| `submitForm()` | Validates input, then either PUTs to `/products/:id` (edit) or POSTs to `/products` (create). Reloads the product list on success |
+| `deleteProduct(id)` | Confirms deletion, then sends `DELETE /products/:id` and reloads |
+
+---
+
+### Flask Payment Server (Python)
+
+#### File: `app_vend.py`
+
+The Flask server handles all payment and hardware communication. It runs on port 8080 by default and communicates with a PicoVend EZ Bridge card reader over a serial connection using the MDB (Multi-Drop Bus) protocol.
+
+**Core class: `MdbBridge`**
+
+Manages the serial connection to the card reader and maintains the global application state. Runs a background thread that continuously reads serial data and parses MDB responses.
+
+**State structure:**
+
+```python
+state = {
+    "pay": {
+        "in_progress": False,
+        "approved": False,
+        "last_status": "",
+        "last_error": "",
+        "pending_items": []
+    },
+    "connected": False,
+    "cashless": {
+        "last_vndapp": None,
+        "last_vndden": None
+    }
+}
+```
+
+**Payment thread (`_pay_flow`):**
+
+When `/api/basket/pay` is called, a background thread executes:
+
+1. Reset state: clear previous payment data
+2. Send `CSLS1RESET` to the card reader
+3. Wait for `CSLS1READY` response (device acknowledged reset)
+4. Send `CSLS1ENABLE` to activate the readers contactless interface
+5. Send `CSLS1VNDREQ(total_price, item_count)` to request payment
+6. Wait up to `VNDAPP_TIMEOUT_S` seconds for either:
+   - `CSLS1VNDAPP(...)` -- card approved, set `approved = True`
+   - `CSLS1VNDDEN` -- card declined, set error
+7. If neither arrives within the timeout, set a timeout error
+
+**Dispense flow:**
+
+When `/api/basket/dispense` is called after approval:
+
+1. Pop one item from `pending_items`
+2. Send `CSLS1VNDSUCC(item_number, price, remaining_items, 0)` to the card reader
+3. Return `{ "ok": true, "done": <bool>, "remaining": <int> }`
+4. When the last item is dispensed (`done: true`), send `CSLS1ENDSESSION`
+
+---
+
+### SQLite Databases
+
+#### File: `src-tauri/src/database.rs`
+
+All database operations are implemented as synchronous functions using the `rusqlite` crate. The databases are stored in a `data` directory under the user's home directory (`USERPROFILE` on Windows, `HOME` on Linux/macOS, or the system temp directory as fallback).
+
+**Database file locations:**
+
+| File | Path | Purpose |
+|------|------|---------|
+| `products.db` | `~/data/products.db` | Product catalog |
+| `ordering_system_data.db` | `~/data/ordering_system_data.db` | Order history |
+
+**Public functions:**
+
+| Function | Description |
+|----------|-------------|
+| `initialize_products_database()` | Creates the products table if it does not exist |
+| `initialize_orders_database()` | Creates the orders table if it does not exist |
+| `new_product(name, category, price, availability)` | Inserts a new product. Creates the database first if it does not exist |
+| `delete_product(product_id)` | Deletes a product by ID. No-ops if the database does not exist |
+| `update_product(product_id, name, category, price, availability)` | Updates all fields of an existing product. No-ops if the database does not exist |
+| `insert_order(product_id, quantity, price)` | Inserts an order record with a timestamp. Creates the database first if it does not exist |
+| `query_products()` | Returns all products as a `Vec<Product>`. Returns an empty vector if the database does not exist |
+
+**Product struct:**
+
+```rust
+pub struct Product {
+    pub product_id: i32,
+    pub product_name: String,
+    pub product_category: String,
+    pub product_price: f64,
+    pub product_availability: bool,
+}
+```
+
+**Accessing databases manually:**
+
+To inspect the products database from a terminal:
+```
+cd ~/data
+sqlite3 products.db
+SELECT * FROM products;
+```
+
+To inspect the orders database:
+```
+cd ~/data
+sqlite3 ordering_system_data.db
+SELECT * FROM orders;
+```
+
+All SQL commands must end with a semicolon.
+
+---
+
+## Data Flow
+
+### Application Startup
+
+The following sequence occurs when the Tauri application launches:
+
+```
+main.rs
+  |
+  v
+lib.rs :: run()
+  |
+  +-- Tauri Builder initializes
+  |     Registers all commands
+  |     Sets up window
+  |
+  v
+App.jsx :: useEffect (runs once on mount)
+  |
+  +-- invoke("return_editor_url")
+  |     -> server.rs :: return_editor_url()
+  |     -> Returns "http://<local_ip>:3000"
+  |     -> Stored in editorUrl state
+  |
+  +-- invoke("initialize_static_page_server")
+  |     -> lib.rs :: initialize_static_page_server()
+  |     -> Spawns: cargo run --bin server
+  |     -> Axum server starts on port 3000
+  |     -> Serves product editor HTML + REST API
+  |
+  +-- invoke("query_products") (via fetchProducts, polled every 6 seconds)
+  |     -> lib.rs :: query_products()
+  |     -> database.rs :: query_products()
+  |     -> Opens ~/data/products.db
+  |     -> SELECT * FROM products
+  |     -> Returns Vec<Product> to React
+  |     -> Stored in products state
+  |
+  +-- invoke("initialize_payment_server")
+  |     -> lib.rs :: initialize_payment_server()
+  |     -> Spawns: python app_vend.py
+  |     -> Waits 2 seconds for Flask startup
+  |     -> Flask server starts on port 8080
+  |     -> MDB bridge connects to card reader serial port
+  |
+  +-- getCurrentWindow().setFullscreen(true)
+        -> Window goes fullscreen after 1 second delay
+```
+
+### Product Selection
+
+```
+User taps a ProductCard
+  |
+  v
+App.jsx :: appendProduct(product, "+")
+  |
+  +-- Checks if product already in selectedProducts
+  |     YES: increment count by 1
+  |     NO:  add product with count = 1
+  |
+  v
+selectedProducts state updated
+  |
+  +-- PriceStatusPill re-renders with new totalPrice
+  +-- Cart modal (if open) shows updated quantities
+```
+
+```
+User taps RemoveButton on a selected product
+  |
+  v
+App.jsx :: appendProduct(product, "-")
+  |
+  +-- Checks if product count > 1
+  |     YES: decrement count by 1
+  |     NO:  remove product from array entirely
+  |
+  v
+selectedProducts state updated
+```
+
+### Payment Flow (Technical)
+
+```
+1. User clicks "Checkout" button in PriceStatusPill
+   |
+   v
+2. App.jsx :: handleCheckout()
+   |
+   +-- Guard: if selectedProducts is empty, return
+   +-- Set cancelledRef = false
+   +-- Set checkoutActive = true (opens payment modal)
+   +-- Set payStatus = "paying"
+   +-- Set payMessage = "Initiating payment..."
+   |
+   +-- Convert products to basket items:
+   |     For each selectedProduct:
+   |       id: product_id
+   |       name: product_name
+   |       price: Math.round(product_price * 100)  // GBP to pence
+   |       qty: count
+   |
+   +-- invoke("initiate_payment", { slot: 1, items })
+   |     |
+   |     v
+   |   lib.rs :: initiate_payment()
+   |     |
+   |     +-- POST http://127.0.0.1:8080/api/basket/pay
+   |     |   Authorization: Bearer supersecret
+   |     |   Body: { "slot": 1, "items": [...] }
+   |     |
+   |     v
+   |   app_vend.py :: /api/basket/pay handler
+   |     |
+   |     +-- Stores items in state.pay.pending_items
+   |     +-- Spawns _pay_flow() thread
+   |     +-- Returns { "ok": true } immediately
+   |     |
+   |     v
+   |   _pay_flow() (background thread):
+   |     +-- CSLS1RESET -> card reader
+   |     +-- Wait for CSLS1READY
+   |     +-- CSLS1ENABLE -> card reader
+   |     +-- CSLS1VNDREQ(total_price, item_count) -> card reader
+   |     +-- Wait for VNDAPP or VNDDEN (up to VNDAPP_TIMEOUT_S)
+   |
+   v
+3. On successful initiation:
+   +-- Set payMessage = "Tap your contactless card to pay..."
+   +-- Start polling (startPolling)
+   |
+   v
+4. App.jsx :: startPolling()
+   |
+   +-- Every 500ms:
+   |     invoke("get_pay_state")
+   |       |
+   |       v
+   |     lib.rs :: get_pay_state()
+   |       |
+   |       +-- GET http://127.0.0.1:8080/api/state
+   |       +-- Returns full state JSON
+   |       |
+   |       v
+   |     Check state.pay:
+   |       |
+   |       +-- If pay.approved == true:
+   |       |     Stop polling
+   |       |     Set payMessage = "Card approved!"
+   |       |     Call doDispenseAll()
+   |       |
+   |       +-- If pay.in_progress == false AND pay.last_error exists:
+   |       |     Stop polling
+   |       |     Set payStatus = "error"
+   |       |     Set payMessage = last_error
+   |       |
+   |       +-- Otherwise:
+   |             Set payMessage = pay.last_status (e.g. "Waiting for card tap...")
+   |
+   v
+5. App.jsx :: doDispenseAll() (after approval)
+   |
+   +-- Set payStatus = "dispensing"
+   +-- Set payMessage = "Dispensing your items..."
+   |
+   +-- Loop while more items:
+   |     invoke("dispense_item", { slot: 1, success: true })
+   |       |
+   |       v
+   |     lib.rs :: dispense_item()
+   |       |
+   |       +-- POST http://127.0.0.1:8080/api/basket/dispense
+   |       |   Body: { "slot": 1, "success": true }
+   |       |
+   |       v
+   |     app_vend.py :: /api/basket/dispense handler
+   |       |
+   |       +-- Pop one item from pending_items
+   |       +-- CSLS1VNDSUCC(item, price, remaining, 0) -> card reader
+   |       +-- Return { "ok": true, "done": <bool>, "remaining": <int> }
+   |       |
+   |       v
+   |     If done == false:
+   |       Set payMessage = "Dispensing... N item(s) remaining"
+   |       Continue loop
+   |     If done == true:
+   |       Exit loop
+   |
+   +-- Set payStatus = "done"
+   +-- Set payMessage = "Payment complete! Thank you."
+   |
+   +-- For each selectedProduct:
+   |     invoke("insert_order", { productId, quantity, price })
+   |       -> database.rs :: insert_order()
+   |       -> INSERT INTO orders (product_id, quantity, price) VALUES (...)
+   |
+   +-- After 3 seconds:
+         Set checkoutActive = false
+         Set payStatus = "idle"
+         Set payMessage = ""
+         Clear selectedProducts
+```
+
+### Payment Flow (Customer Perspective)
+
+1. Customer browses products on the vending machine touchscreen
+2. Taps product cards to add items to their selection
+3. Each tap adds one unit; multiple taps add multiple units
+4. The total price updates in real time on the bottom bar
+5. Customer taps "Checkout"
+6. Screen shows "Initiating payment..." for 1-2 seconds
+7. Screen changes to "Tap your contactless card to pay"
+8. Customer taps their contactless card, phone, or smartwatch on the card reader
+9. If approved: screen shows "Card approved!" then "Dispensing your items..." with a countdown
+10. The vending machine physically dispenses each item
+11. Screen shows "Payment complete! Thank you." for 3 seconds
+12. Screen returns to the product selection view
+13. If declined or timeout: screen shows the error reason with a "Dismiss" button
+14. No items are dispensed on failure
+
+### Product Management (Admin)
+
+Products are managed through the Axum-hosted static HTML page, accessible from any device on the same network.
+
+```
+Admin opens http://<machine_ip>:3000 in a browser
+  |
+  v
+index.html loads
+  |
+  +-- loadProducts()
+  |     GET http://<machine_ip>:3000/products
+  |       -> server.rs :: get_products()
+  |       -> database.rs :: query_products()
+  |       -> Returns JSON array of products
+  |     Renders product table
+  |
+  v
+Admin fills out the form and clicks "Save"
+  |
+  +-- submitForm()
+  |     Validates price format
+  |     If editing (edit-id is set):
+  |       PUT /products/:id
+  |         -> server.rs :: edit_product()
+  |         -> database.rs :: update_product()
+  |     If adding (edit-id is empty):
+  |       POST /products
+  |         -> server.rs :: create_product()
+  |         -> database.rs :: new_product()
+  |     Reloads product list
+  |
+  v
+Admin clicks delete button on a product row
+  |
+  +-- deleteProduct(id)
+        Confirmation dialog
+        DELETE /products/:id
+          -> server.rs :: remove_product()
+          -> database.rs :: delete_product()
+        Reloads product list
+```
+
+The React app picks up product changes automatically because it polls `query_products` every 6 seconds.
+
+---
+
+## State Flow Diagram
+
+```
+                    User Selects Items
+                            |
+                            v
+                    +-------+-------+
+                    |     IDLE      |
+                    | payStatus =   |
+                    | "idle"        |
+                    +-------+-------+
+                            |
+                    Click "Checkout"
+                            |
+                            v
+                    +-------+-------+
+                    |    PAYING     |
+                    | payStatus =   |
+                    | "paying"      |
+                    |               |
+                    | Tauri calls   |
+                    | /api/basket/  |
+                    | pay           |
+                    |               |
+                    | React polls   |
+                    | /api/state    |
+                    | every 500ms   |
+                    +-------+-------+
+                            |
+                Does card approval arrive?
+                            |
+                   +--------+--------+
+                   |                 |
+                   NO                YES
+                   |                 |
+                   v                 v
+           +-------+------+  +------+--------+
+           |    ERROR     |  |  DISPENSING    |
+           | payStatus =  |  | payStatus =   |
+           | "error"      |  | "dispensing"   |
+           |              |  |               |
+           | Shows error  |  | Loop: call    |
+           | message and  |  | /api/basket/  |
+           | "Dismiss"    |  | dispense      |
+           | button       |  | until done=   |
+           |              |  | true           |
+           +-------+------+  |               |
+                   |         | Each call      |
+                   |         | sends VNDSUCC  |
+                   |         | to card reader |
+                   |         +------+---------+
+                   |                |
+                   |                v
+                   |         +------+--------+
+                   |         |     DONE      |
+                   |         | payStatus =   |
+                   |         | "done"        |
+                   |         |               |
+                   |         | "Payment      |
+                   |         | complete!"    |
+                   |         |               |
+                   |         | Orders saved  |
+                   |         | to database   |
+                   |         +------+--------+
+                   |                |
+                   |         3 second delay
+                   |                |
+                   |                v
+                   |         Clear cart
+                   |                |
+                   +------>  IDLE (reset)
+```
+
+---
+
+## MDB Protocol Commands
+
+The Flask server communicates with the PicoVend EZ Bridge card reader using MDB (Multi-Drop Bus) protocol over serial. Commands are sent as text strings terminated by newlines.
+
+| Command | Direction | Purpose |
+|---------|-----------|---------|
+| `CSLS1RESET` | To reader | Reset the cashless device to a known state |
+| `CSLS1READY` | From reader | Device acknowledges reset, ready for commands |
+| `CSLS1ENABLE` | To reader | Enable the contactless interface for transactions |
+| `CSLS1BEGIN(...)` | From reader | Customer card tap detected, authorization in progress |
+| `CSLS1VNDREQ(price, items)` | To reader | Request payment authorization for the given total price and item count |
+| `CSLS1VNDAPP(...)` | From reader | Card approved, payment authorized |
+| `CSLS1VNDDEN` | From reader | Card declined, payment rejected |
+| `CSLS1VNDSUCC(item, price, remaining, 0)` | To reader | Acknowledge successful dispense of one item. Parameters: item number, item price in pence, remaining items, and a trailing zero |
+| `CSLS1VNDFAIL` | To reader | Report that an item failed to dispense |
+| `CSLS1ENDSESSION` | To reader | End the current payment session after all items dispensed |
+
+---
+
+## API Reference
+
+### Flask Endpoints
+
+All Flask endpoints require an `Authorization: Bearer <API_TOKEN>` header. The default token is `supersecret`.
+
+#### POST /api/basket/pay
+
+Initiates a payment flow. Returns immediately; payment processing happens in a background thread.
+
+**Request body:**
+```json
+{
   "slot": 1,
   "items": [
-    {"id": 1, "name": "Cola", "price": 150, "qty": 1},
-    ...
+    { "id": 1, "name": "Cola", "price": 150, "qty": 1 },
+    { "id": 2, "name": "Chips", "price": 100, "qty": 2 }
   ]
 }
 ```
 
-Response: `{"ok": true}` (returns immediately)
+Prices are in pence (integer). `qty` is the count of that item.
 
-### 4. Flask Spawns Payment Thread
-
-The `_pay_flow()` function runs in the background:
-
-1. Send `CSLS1RESET` to card reader
-2. Wait for `CSLS1READY` response
-3. Send `CSLS1ENABLE` to activate reader
-4. Send `CSLS1VNDREQ(total_price, item_count)` and wait for approval
-
-The card reader responses:
-- `CSLS1VNDAPP(...)` = card approved, payment accepted
-- `CSLS1VNDDEN` = card declined
-- `CSLS1BEGIN(...)` = customer tap detected, waiting for authorization
-
-Flask updates `state.pay` with:
-- `approved: true/false`
-- `in_progress: true/false`
-- `last_status: "..."` (human-readable message)
-- `last_error: "..."` (if something failed)
-
-### 5. React Polls for Approval
-
-While `payStatus = "paying"`, React polls `get_pay_state()` every 500ms:
-
-```javascript
-setInterval(async () => {
-  const state = await invoke("get_pay_state");
-  if (state.pay.approved) {
-    stopPolling();
-    await doDispenseAll();  // Start dispensing
-  }
-  if (state.pay.in_progress === false && !state.pay.approved) {
-    // Payment failed
-    setPayStatus("error");
-    setPayMessage(`Error: ${state.pay.last_error}`);
-  }
-}, 500);
+**Response (success):**
+```json
+{ "ok": true }
 ```
 
-### 6. Dispense Loop
-
-Once approved, React calls `dispense_item(success=true)` for each item in the basket:
-
+**Response (error):**
+```json
+{ "ok": false, "error": "Payment already in progress" }
 ```
-POST http://127.0.0.1:8080/api/basket/dispense
-Authorization: Bearer supersecret
-Body: {
+
+#### POST /api/basket/dispense
+
+Reports one item as dispensed. Call this endpoint repeatedly after payment approval until `done` is true.
+
+**Request body:**
+```json
+{
   "slot": 1,
   "success": true
 }
 ```
 
-Flask response:
-```javascript
+Set `success` to `false` to report a dispense failure (sends `CSLS1VNDFAIL` to the reader).
+
+**Response:**
+```json
 {
   "ok": true,
-  "done": false,           // More items pending
+  "done": false,
   "remaining": 2
 }
 ```
 
-For each item, Flask:
-1. Pops one item from the pending basket
-2. Sends `CSLS1VNDSUCC(item_number, price, remaining_items, 0)` to card reader
-3. Returns the updated basket state
+When `done` is `true`, all items have been dispensed and the session has ended.
 
-React loops until `done: true`:
+#### GET /api/state
 
-```javascript
-let more = true;
-while (more) {
-  const res = await invoke("dispense_item", { slot: 1, success: true });
-  more = !res.done;
-  if (!res.done) {
-    setPayMessage(`Dispensing... ${res.remaining} items remaining`);
+Returns the full current state of the payment system.
+
+**Response:**
+```json
+{
+  "pay": {
+    "in_progress": true,
+    "approved": false,
+    "last_status": "Waiting for card tap...",
+    "last_error": "",
+    "pending_items": [
+      { "id": 1, "name": "Cola", "price": 150 },
+      { "id": 2, "name": "Chips", "price": 100 }
+    ]
+  },
+  "connected": true,
+  "cashless": {
+    "last_vndapp": null,
+    "last_vndden": null
   }
 }
 ```
 
-### 7. Payment Complete
+### Axum Product Editor Endpoints
 
-- `payStatus = "done"`
-- `payMessage = "Payment complete! Thank you."`
-- Cart clears after 3 seconds
-- System resets to idle
+These endpoints are served by the Rust Axum server on port 3000. No authentication is required.
+
+#### GET /products
+
+Returns all products from the database.
+
+**Response:**
+```json
+[
+  {
+    "product_id": 1,
+    "product_name": "Cola",
+    "product_category": "Drinks",
+    "product_price": 1.50,
+    "product_availability": true
+  }
+]
+```
+
+#### POST /products
+
+Creates a new product.
+
+**Request body:**
+```json
+{
+  "product_name": "Cola",
+  "product_category": "Drinks",
+  "product_price": 1.50,
+  "product_availability": true
+}
+```
+
+**Response:** `201 Created` with body `"ok"`, or `500` with error message.
+
+#### PUT /products/:id
+
+Updates an existing product.
+
+**Request body:** Same as POST.
+
+**Response:** `200 OK` with body `"updated"`, or `500` with error message.
+
+#### DELETE /products/:id
+
+Deletes a product by ID.
+
+**Response:** `200 OK` with body `"deleted"`, or `500` with error message.
+
+#### GET / (and all other paths)
+
+Serves static files from `src-tauri/src/static/`. The default `index.html` is the product editor admin page.
+
+### Tauri Commands
+
+These are the Rust functions exposed to the React frontend via `invoke()`. Each function name corresponds to the first argument of `invoke()`.
+
+| Command | JS Usage | Description |
+|---------|----------|-------------|
+| `initialize_payment_server` | `await invoke("initialize_payment_server")` | Spawns `app_vend.py` |
+| `initialize_static_page_server` | `await invoke("initialize_static_page_server")` | Spawns the Axum server |
+| `initialize_orders_database` | `await invoke("initialize_orders_database")` | Creates orders table |
+| `initialize_products_database` | `await invoke("initialize_products_database")` | Creates products table |
+| `query_products` | `await invoke("query_products")` | Returns product array |
+| `insert_order` | `await invoke("insert_order", { productId, quantity, price })` | Saves an order |
+| `new_product` | `await invoke("new_product", { productName, productCategory, productPrice, productAvailability })` | Adds a product |
+| `delete_product` | `await invoke("delete_product", { productId })` | Removes a product |
+| `initiate_payment` | `await invoke("initiate_payment", { slot, items })` | Starts payment flow |
+| `dispense_item` | `await invoke("dispense_item", { slot, success })` | Dispenses one item |
+| `get_pay_state` | `await invoke("get_pay_state")` | Polls payment state |
+| `return_editor_url` | `await invoke("return_editor_url")` | Gets editor URL string |
+| `kill_app` | `await invoke("kill_app")` | Kills servers and exits |
 
 ---
 
-## Payment Flow: Customer Perspective
+## Database Schema
 
-### Before Payment
+### Products Database (`~/data/products.db`)
 
-1. Customer browses the vending machine screen
-2. Taps on products they want (e.g., Cola, Chips, etc.)
-3. Each tap adds one item; they can add multiple of the same product
-4. Sees their selections and total price on screen
+Table: `products`
 
-### At Checkout
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `product_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique product identifier |
+| `product_name` | TEXT | NOT NULL | Display name of the product |
+| `product_category` | TEXT | NOT NULL | Must match one of the app categories: Drinks, Snacks, Food, Drugs, Questionable |
+| `product_price` | REAL | NOT NULL | Price in GBP as a decimal (e.g. 1.50) |
+| `product_availability` | INTEGER | NOT NULL DEFAULT 1 | Boolean stored as integer: 1 = available, 0 = hidden |
 
-1. Customer taps the "Checkout" button
-2. Screen shows: "Initiating payment..."
-3. Within 1-2 seconds, screen changes to: "Tap your contactless card to pay"
+### Orders Database (`~/data/ordering_system_data.db`)
 
-### Payment Approval
+Table: `orders`
 
-1. Customer taps their contactless card (credit card, debit card, or mobile wallet) on the card reader
-2. System processes the transaction with the card reader
-3. Screen updates: "Processing..." or shows a small status update
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `order_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique order identifier |
+| `product_id` | INTEGER | NOT NULL | References the product that was ordered |
+| `quantity` | INTEGER | NOT NULL | Number of units ordered |
+| `price` | FLOAT | NOT NULL | Total price paid for this line item (product_price * quantity) |
+| `timestamp` | DATETIME | DEFAULT CURRENT_TIMESTAMP | When the order was placed |
 
-### Dispensing
-
-1. Once payment is approved, the machine automatically dispenses items
-2. Customer sees: "Dispensing your items..." with a counter (e.g., "2 items remaining")
-3. Physical dispensing mechanisms activate—items drop into the collection area
-
-### Completion
-
-1. Screen shows: "Payment complete! Thank you."
-2. After 3 seconds, screen returns to the main product selection view
-3. Customer collects their items from the dispenser
-
-### If Payment Fails
-
-1. Card declined or reader error detected
-2. Screen shows: "Payment failed: [reason]"
-3. Customer can tap "Dismiss" or "Cancel"
-4. No items are dispensed
-5. System returns to product selection
+Note: There is no foreign key constraint between orders and products. If a product is deleted, its historical orders remain in the orders database.
 
 ---
 
-## Setup & Running
+## Configuration
+
+### Flask Environment Variables
+
+Set these before running `app_vend.py`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MDB_PORT` | `/dev/ttyUSB0` | Serial port path for the card reader |
+| `MDB_BAUD` | `115200` | Baud rate for serial communication |
+| `WEB_HOST` | `0.0.0.0` | Flask HTTP server bind address |
+| `WEB_PORT` | `8080` | Flask HTTP server port |
+| `API_TOKEN` | `supersecret` | Bearer token for API authentication. Must match `API_TOKEN` constant in `lib.rs` |
+| `CASHLESS_X` | `1` | Cashless device index (typically 1 for the first reader) |
+| `BASKET_MODE` | `0` | Basket mode: 0 = single item mode, 1 = multiple item mode |
+| `CARD_TAP_TIMEOUT_S` | `60.0` | Seconds to wait for a customer to tap their card |
+| `VNDAPP_TIMEOUT_S` | `30.0` | Seconds to wait for VNDAPP (card approval) response from the reader |
+
+### Tauri Constants (`lib.rs`)
+
+| Constant | Value | Description |
+|----------|-------|---------|
+| `FLASK_BASE` | `http://127.0.0.1:8080` | Base URL for Flask. Change if Flask runs on a different port or host |
+| `API_TOKEN` | `supersecret` | Must match the Flask `API_TOKEN` environment variable |
+
+### React Constants (`App.jsx`)
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `CATEGORIES` | `["All", "Drinks", "Snacks", "Food", "Drugs", "Questionable"]` | Product category filter tabs. "All" shows everything |
+| `INITIAL_STATE_FULLSCREEN` | `true` | Whether the app starts in fullscreen mode |
+
+### Tauri Capabilities (`src-tauri/capabilities/default.json`)
+
+The application requests these permissions:
+- `core:default` -- Standard Tauri core permissions
+- `opener:default` -- Allows opening URLs in the system browser (for the editor link)
+- `core:window:allow-set-fullscreen` -- Allows toggling fullscreen mode
+
+---
+
+## Build Instructions
 
 ### Prerequisites
 
-- Python 3.8+
-- Node.js 16+
-- Rust (for Tauri)
-- Serial port connection to MDB card reader (typically `/dev/ttyUSB0`)
+| Requirement | Minimum Version | Purpose |
+|-------------|-----------------|---------|
+| Node.js | 16+ | React frontend build tooling (Vite) |
+| Rust | stable | Tauri backend compilation |
+| Python | 3.8+ | Flask payment server |
+| pip packages | flask, pyserial | Flask dependencies |
+| System packages (Linux) | `libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, etc. | Tauri Linux dependencies |
 
-### Backend Setup
+### Backend Setup (Flask)
 
 ```bash
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install dependencies
+# Install Python dependencies
 pip install flask pyserial
+
+# Or if using the requirements file:
+pip install -r app_vend_requirements.txt
+
+# On Debian/Ubuntu, system packages may be needed:
+sudo apt install python3-flask python3-serial
 ```
 
-### Start Flask Server
+### Frontend and Tauri Setup
 
 ```bash
-# With default settings (serial on /dev/ttyUSB0, Flask on port 8080)
+# Install Node.js dependencies
+npm install
+
+# Development mode (hot reload for React, auto-rebuilds Tauri)
+npm run tauri dev
+
+# Production build
+npm run tauri build
+```
+
+### Cross-Compilation for Raspberry Pi
+
+The Raspberry Pi uses ARM64 architecture. To cross-compile from an x86 machine:
+
+```bash
+# Install the ARM64 cross-compiler (Debian/Ubuntu)
+sudo apt install gcc-aarch64-linux-gnu
+
+# Add the Rust target
+rustup target add aarch64-unknown-linux-gnu
+
+# Build for ARM64
+npm run tauri build -- --target aarch64-unknown-linux-gnu
+```
+
+Alternatively, build directly on the Raspberry Pi by running `npm run tauri build` on the device itself.
+
+### Starting the Flask Server Manually
+
+The Flask server is normally spawned automatically by the Tauri app on startup. To run it manually for testing:
+
+```bash
+# With default settings
 python app_vend.py
 
-# Or with custom settings
+# With custom settings
 export MDB_PORT=/dev/ttyUSB0
 export WEB_PORT=8080
 export API_TOKEN=your_secret_token
@@ -254,210 +1143,144 @@ Expected output:
 [app_vend] Basket mode: 0
 ```
 
-### Frontend Setup & Run
-
-```bash
-# Install dependencies
-npm install
-
-# Development mode (Vite + Tauri)
-npm run tauri dev
-
-# Build production bundle
-npm run tauri build
-```
-
----
-
-## Configuration
-
-Set these environment variables before running `app_vend.py`:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MDB_PORT` | `/dev/ttyUSB0` | Serial port for card reader |
-| `MDB_BAUD` | `115200` | Baud rate for serial communication |
-| `WEB_HOST` | `0.0.0.0` | Flask server bind address |
-| `WEB_PORT` | `8080` | Flask server port |
-| `API_TOKEN` | `supersecret` | Authorization token (Tauri must match this) |
-| `CASHLESS_X` | `1` | Cashless device index (typically 1) |
-| `BASKET_MODE` | `0` | Basket mode: 0 = single item, 1 = multiple items |
-| `CARD_TAP_TIMEOUT_S` | `60.0` | Timeout for customer card tap |
-| `VNDAPP_TIMEOUT_S` | `30.0` | Timeout for VNDAPP response from card reader |
-
----
-
-## API Endpoints (Flask)
-
-### POST /api/basket/pay
-
-Initiates a payment flow.
-
-**Request:**
-```json
-{
-  "slot": 1,
-  "items": [
-    {"id": 1, "name": "Cola", "price": 150, "qty": 1}
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "ok": true
-}
-```
-
-### POST /api/basket/dispense
-
-Reports one item as dispensed. Must be called once per item after payment approval.
-
-**Request:**
-```json
-{
-  "slot": 1,
-  "success": true
-}
-```
-
-**Response:**
-```json
-{
-  "ok": true,
-  "done": false,
-  "remaining": 2
-}
-```
-
-### GET /api/state
-
-Polls the current payment state.
-
-**Response:**
-```json
-{
-  "pay": {
-    "in_progress": true,
-    "approved": false,
-    "last_status": "Waiting for card tap...",
-    "last_error": "",
-    "pending_items": [
-      {"id": 1, "name": "Cola", "price": 150}
-    ]
-  },
-  "connected": true,
-  "cashless": { ... }
-}
-```
-
----
-
-## State Flow Diagram
-
-```
-        User Selects Items
-                |
-                v
-        [IDLE] - Click Checkout
-                |
-                v
-        [PAYING] - Tauri calls /api/basket/pay
-                |  Flask spawns _pay_flow thread
-                |  React polls /api/state every 500ms
-                |
-        Does card approval arrive?
-                |
-        --------|--------
-        |               |
-        NO              YES
-        |               |
-        v               v
-    [ERROR]        [DISPENSING] - Loop: call /api/basket/dispense
-        |               |           until done=true
-        |               |           Each call sends VNDSUCC
-        |               |
-        |               v
-        |           [DONE] - Show success message
-        |               |
-        |               v
-        |           Clear cart (3s delay)
-        |               |
-        +--->[IDLE] Reset state
-```
-
----
-
-## MDB Protocol Commands Used
-
-The Flask server communicates with the card reader using MDB (Multi-Drop Bus) protocol:
-
-| Command | Purpose |
-|---------|---------|
-| `CSLS1RESET` | Reset the cashless device |
-| `CSLS1READY` | Device acknowledges reset (unsolicited response) |
-| `CSLS1ENABLE` | Enable the device for transactions |
-| `CSLS1VNDREQ(price,items)` | Request payment for items |
-| `CSLS1VNDAPP(...)` | Card approved (unsolicited response) |
-| `CSLS1VNDDEN` | Card denied (unsolicited response) |
-| `CSLS1VNDSUCC(item,price,remaining,0)` | Item dispensed successfully |
-| `CSLS1VNDFAIL` | Item dispense failed |
-| `CSLS1ENDSESSION` | End payment session |
-
 ---
 
 ## Troubleshooting
 
 ### Flask Cannot Connect to Serial Port
 
+**Symptom:**
 ```
 Error: [Errno 2] No such file or directory: '/dev/ttyUSB0'
 ```
 
-**Solution:**
-- Check if USB cable is connected to card reader
-- Verify port name: `ls /dev/tty*`
-- Update `MDB_PORT` environment variable
-- May need `sudo` permissions depending on OS
+**Causes and solutions:**
+- The USB cable to the card reader is not connected. Reconnect it.
+- The port name is different. List available ports with `ls /dev/tty*` and update `MDB_PORT`.
+- Permission denied. Run with `sudo` or add your user to the `dialout` group: `sudo usermod -aG dialout $USER` then log out and back in.
 
 ### Tauri Cannot Reach Flask
 
+**Symptom:**
 ```
-Payment request failed — is app_vend.py running on :8080?
+Payment request failed -- is app_vend.py running on :8080?
 ```
 
-**Solution:**
-- Ensure Flask is running: `python app_vend.py`
-- Check port 8080 is available: `lsof -i :8080`
-- Verify network: Flask should be on `127.0.0.1:8080`
+**Causes and solutions:**
+- Flask is not running. Check if `app_vend.py` was spawned: `ps aux | grep app_vend`.
+- Port 8080 is occupied by another process. Check with `lsof -i :8080` (Linux) or `netstat -ano | findstr 8080` (Windows).
+- Flask crashed on startup. Check terminal output for Python errors.
+- The `FLASK_BASE` constant in `lib.rs` does not match the actual Flask address/port.
 
 ### Card Reader Not Responding
 
+**Symptom:**
 ```
 last_error: "VNDAPP timeout after 30.0s"
 ```
 
-**Solution:**
-- Check card reader is powered on
-- Verify MDB cable connection
-- Try different `VNDAPP_TIMEOUT_S` value
-- Check card reader is in contactless mode
+**Causes and solutions:**
+- The card reader is not powered on. Check its power supply.
+- The MDB serial cable is disconnected or faulty. Verify physical connections.
+- The baud rate is wrong. Ensure `MDB_BAUD` matches the reader's configuration (default 115200).
+- The timeout is too short for slow networks/readers. Increase `VNDAPP_TIMEOUT_S`.
+- The card reader is not in contactless mode. Consult the PicoVend EZ Bridge documentation.
 
 ### Payment Approved But Items Not Dispensing
 
-Ensure you're calling `POST /api/basket/dispense` after approval.
+**Symptom:** The screen shows "Card approved!" but never transitions to "Dispensing..."
 
-**Solution:**
-- Check React console for errors
-- Verify the loop in `doDispenseAll()` is running
-- Ensure basket has items: check `/api/state` response
+**Causes and solutions:**
+- The `doDispenseAll()` function is not being called. Check the browser developer console for JavaScript errors.
+- The dispense endpoint is failing. Check Flask logs for errors on `POST /api/basket/dispense`.
+- The basket is empty in Flask state. Verify with `GET /api/state` that `pending_items` is populated after payment approval.
+
+### Products Not Showing in the React App
+
+**Symptom:** "No products available." displayed on the main screen.
+
+**Causes and solutions:**
+- No products have been added. Open the product editor at `http://<machine_ip>:3000` and add products.
+- All products have `product_availability` set to false/0. Edit products to mark them as available.
+- The products database does not exist yet. It is created automatically when the first product is added.
+- The 6-second polling interval means changes take up to 6 seconds to appear. Click "Refresh Products" in the admin panel to force a reload.
+
+### Product Editor Page Not Loading
+
+**Symptom:** Cannot access `http://<machine_ip>:3000`.
+
+**Causes and solutions:**
+- The Axum server failed to start. Check Tauri console output for cargo build errors.
+- Port 3000 is occupied. Check with `lsof -i :3000` or `netstat -ano | findstr 3000`.
+- Firewall is blocking port 3000. Allow incoming connections on port 3000 for LAN access.
+- The Axum binary did not compile. Run `cargo build --bin server` in the `src-tauri` directory to check for compilation errors.
+
+### Fullscreen Not Working
+
+**Symptom:** The app window does not go fullscreen on startup.
+
+**Causes and solutions:**
+- The Tauri capability `core:window:allow-set-fullscreen` must be present in `src-tauri/capabilities/default.json`.
+- On some Linux window managers, fullscreen requests may be ignored. Try a different window manager or use the admin panel toggle.
 
 ---
 
 ## Development Notes
 
-- **Price Format:** Prices are stored as scaled integers throughout the system. React converts decimal (£1.25) → integer (125) before sending to Flask.
-- **Async Flow:** Payment approval is asynchronous—Flask thread runs in background while React polls for completion.
-- **Error Recovery:** If payment fails at any stage, the basket is cleared and system returns to idle.
-- **Token Security:** In production, change `API_TOKEN` from default "supersecret" to a strong secret.
+### Price Handling
+
+Prices follow different formats at different layers:
+- **Database:** Stored as `REAL` (float) in GBP (e.g. `1.50`)
+- **React state:** Stored as float in GBP (e.g. `1.50`)
+- **React to Flask:** Converted to integer pence before sending (`Math.round(price * 100)`, e.g. `150`)
+- **Flask to card reader:** Sent as integer pence in MDB commands
+- **Orders database:** Stored as float representing total line item price (`product_price * quantity`)
+
+### Asynchronous Payment Flow
+
+Payment approval is entirely asynchronous. Flask spawns a background thread for the MDB communication sequence. React polls the Flask state endpoint every 500 milliseconds to detect state changes. This design means the React UI remains responsive during the entire payment process and can display intermediate status updates from the card reader.
+
+### Error Recovery
+
+If a payment fails at any stage (initiation, card tap timeout, card decline, dispense failure), the system:
+1. Sets `payStatus` to `"error"` with a descriptive message
+2. Stops polling
+3. Displays a "Dismiss" button to the user
+4. On dismiss, resets all payment state to idle
+5. No items are dispensed on failure
+6. No orders are recorded in the database on failure
+
+### Server Process Management
+
+The Tauri application manages two child processes:
+1. **Flask server** (`app_vend.py`) -- Spawned via Python on startup. Not tracked in `SERVER_PROCESS` (fire-and-forget).
+2. **Axum server** (`cargo run --bin server`) -- Spawned on startup, tracked in `SERVER_PROCESS`. Killed when the app exits or when `kill_app` is called. Also killed and respawned if `initialize_static_page_server` is called again.
+
+### Token Security
+
+The `API_TOKEN` constant in `lib.rs` and the `API_TOKEN` environment variable for Flask must match. The default value `supersecret` should be changed to a strong, unique secret in production deployments. The token is sent as a Bearer token in the Authorization header of all HTTP requests from Tauri to Flask.
+
+### Database Location
+
+Both databases are stored in `~/data/` (the user home directory's `data` subdirectory). On Windows this resolves via `USERPROFILE`, on Linux/macOS via `HOME`, and falls back to the system temp directory. The directory is created automatically if it does not exist.
+
+### Product Category Consistency
+
+The category strings stored in the database must exactly match the category names defined in the `CATEGORIES` constant in `App.jsx` (excluding "All", which is a filter-only category). The product editor dropdown in `index.html` also defines the same categories. If categories need to be changed, all three locations must be updated:
+1. `src/App.jsx` -- `CATEGORIES` array
+2. `src-tauri/src/static/index.html` -- `<select id="category">` options
+3. Existing database records (manually update category values)
+
+### Polling Architecture
+
+The application uses two different polling mechanisms:
+1. **Product refresh polling:** Every 6 seconds, `fetchProducts` queries the database for product updates. This runs continuously while the app is open. Note: this reuses `pollRef`, which means starting payment polling will overwrite the product refresh interval. Product refreshing resumes when `fetchProducts` is called again (e.g., from the admin panel "Refresh Products" button).
+2. **Payment state polling:** Every 500 milliseconds during an active payment, `startPolling` queries Flask for payment state changes. This is active only between payment initiation and completion/cancellation.
+
+### Known Issues and Inconsistencies
+
+1. The `PriceStatusPill` component displays prices with a `$` prefix while the rest of the application uses GBP notation.
+2. The `filteredProducts` function is exported from `AppHelpers.jsx` but the actual filtering in `App.jsx` is done inline rather than calling this helper.
+3. The `pollRef` is shared between product refresh polling and payment state polling. Starting a payment will stop product refresh polling, and it is only resumed if `fetchProducts` is called explicitly.
+4. The `categoryIndocator` variable in `App.jsx` contains a typo (should be `categoryIndicator`).
+5. The Flask server process is spawned but its handle is not stored, so it cannot be cleanly killed on application exit. Only the Axum server process is tracked and killed unless the application is running.

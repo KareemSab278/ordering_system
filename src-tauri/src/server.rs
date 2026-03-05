@@ -78,11 +78,16 @@ fn get_local_ip() -> String {
     socket.local_addr().unwrap().ip().to_string()
 }
 
+pub fn return_editor_url() -> String {
+    let local_ip = get_local_ip();
+    format!("http://{}:3000", local_ip)
+}
+
 #[tokio::main]
 async fn main() {
     let app = Router::new()
         .route("/products", get(get_products).post(create_product))
-        .route("/products/{id}", delete(remove_product).put(edit_product))
+        .route("/products/:id", delete(remove_product).put(edit_product))
         .fallback_service(ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/static")));
     let addr = SocketAddr::from(([0,0,0,0], 3000));
     let local_ip = get_local_ip();
