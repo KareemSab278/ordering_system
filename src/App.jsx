@@ -10,8 +10,9 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as helpers from "./AppHelpers";
 
 export { App, CATEGORIES };
-  
-const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "drugs", "questionable"];
+
+const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Drugs", "Questionable"];
+const INITIAL_FULLSCREEN_STATE = false;
 
 function App() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -28,13 +29,6 @@ function App() {
   const pollRef = useRef(null);
   const cancelledRef = useRef(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      getCurrentWindow().setFullscreen(true);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
-
   const fetchProducts = async () => {
     try {
       const prods = await invoke("query_products");
@@ -43,6 +37,13 @@ function App() {
       console.error("Error fetching products:", e);
     }
   };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      getCurrentWindow().setFullscreen(INITIAL_FULLSCREEN_STATE);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const initializePaymentServer = async () => {
@@ -55,6 +56,15 @@ function App() {
       }
     };
 
+    const initializeStaticServer = async () => {
+      try {
+        await invoke("initialize_static_page_server");
+      } catch (e) {
+        console.error("Failed to start static page server:", e);
+      }
+    };
+
+    initializeStaticServer();
     fetchProducts();
     initializePaymentServer();
 
@@ -69,7 +79,6 @@ function App() {
       pollRef.current = null;
     }
   };
-  
 
   const doDispenseAll = async () => {
     if (cancelledRef.current) return;
@@ -88,7 +97,8 @@ function App() {
           return;
         }
         more = !res.done;
-        if (!res.done) setPayMessage(`Dispensing… ${res.remaining} item(s) remaining`);
+        if (!res.done)
+          setPayMessage(`Dispensing… ${res.remaining} item(s) remaining`);
       } catch (e) {
         setPayStatus("error");
         setPayMessage(`Dispense error: ${e}`);
@@ -123,7 +133,10 @@ function App() {
 
   const startPolling = () => {
     pollRef.current = setInterval(async () => {
-      if (cancelledRef.current) { stopPolling(); return; }
+      if (cancelledRef.current) {
+        stopPolling();
+        return;
+      }
       try {
         const raw = await invoke("get_pay_state");
         const state = JSON.parse(raw);
@@ -207,20 +220,23 @@ function App() {
     });
   };
 
-
   const filteredProducts =
     activeCategory === "All"
       ? products.filter((prod) => prod.product_availability)
       : products.filter(
-        (prod) => prod.product_category === activeCategory && prod.product_availability,
-      );
+          (prod) =>
+            prod.product_category === activeCategory &&
+            prod.product_availability,
+        );
 
   const totalPrice = selectedProducts.reduce(
     (sum, p) => sum + p.product_price * p.count,
     0,
   );
 
-  const statusIcon = { paying: "💳", dispensing: "⚙️", done: "✅", error: "❌" }[payStatus] ?? "💳";
+  const statusIcon =
+    { paying: "💳", dispensing: "⚙️", done: "✅", error: "❌" }[payStatus] ??
+    "💳";
 
   const checkoutModal = (
     <Modal
@@ -233,7 +249,12 @@ function App() {
           {(payStatus === "error" || payStatus === "done") && (
             <PrimaryButton
               title={payStatus === "done" ? "Close" : "Dismiss"}
-              onClick={() => { handleCheckoutCancel(); setPayStatus("idle"); setPayMessage(""); setSelectedProducts([]); }}
+              onClick={() => {
+                handleCheckoutCancel();
+                setPayStatus("idle");
+                setPayMessage("");
+                setSelectedProducts([]);
+              }}
             />
           )}
           {payStatus === "paying" && (
@@ -265,7 +286,10 @@ function App() {
                 onRemove={() => appendProduct(prod, "-")}
               />
             ))}
-            <PrimaryButton title="Clear All" onClick={() => setSelectedProducts([])} />
+            <PrimaryButton
+              title="Clear All"
+              onClick={() => setSelectedProducts([])}
+            />
           </section>
         )
       }
@@ -286,13 +310,15 @@ function App() {
 
   const productsSection = (
     <section style={helpers.styles.productsSection}>
-      {products.length > 0 ? filteredProducts.map((product) => (
-        <ProductCard
-          key={product.product_id}
-          product={product}
-          onClick={() => appendProduct(product, "+")}
-        />
-      )) : (
+      {products.length > 0 ? (
+        filteredProducts.map((product) => (
+          <ProductCard
+            key={product.product_id}
+            product={product}
+            onClick={() => appendProduct(product, "+")}
+          />
+        ))
+      ) : (
         <div style={helpers.styles.noProductsMessage}>
           No products available.
         </div>
@@ -328,6 +354,11 @@ function App() {
             title="Kill App"
             onDoubleClick={() => invoke("kill_app")}
           />
+          <PrimaryButton
+            title="Refresh Products"
+            onClick={fetchProducts}
+          />
+
           <ProductsEditor onProductsChanged={fetchProducts} />
         </section>
       }
@@ -342,7 +373,15 @@ function App() {
       {checkoutModal}
       {selectedProductsModal}
       <div
-        style={{ position: "fixed", top: 0, right: 0, width: 60, height: 60, zIndex: 9999, opacity: 0 }}
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          width: 60,
+          height: 60,
+          zIndex: 9999,
+          opacity: 0,
+        }}
         onDoubleClick={() => setAdminModalOpen(true)}
       />
       {adminModal}

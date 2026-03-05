@@ -90,7 +90,7 @@ const ProductsEditor = ({ onProductsChanged }) => {
           value={form.category}
           onChange={(e) => setForm({ ...form, category: e.target.value })}
         >
-          {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          {CATEGORIES.filter((c) => c !== "All").map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <input
           style={styles.input}

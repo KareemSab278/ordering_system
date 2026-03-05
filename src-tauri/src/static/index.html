@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Products</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f11;
+      color: #e4e4e7;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 1.5rem; color: #fff; }
+    h2 { font-size: 1.1rem; font-weight: 600; margin-bottom: 1rem; color: #a1a1aa; }
+
+    .container { max-width: 860px; margin: 0 auto; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      margin-bottom: 2rem;
+    }
+
+    table { width: 100%; border-collapse: collapse; }
+
+    thead { background: #1f1f23; }
+    thead th {
+      padding: 0.75rem 1rem;
+      text-align: left;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #71717a;
+    }
+
+    tbody tr { border-top: 1px solid #27272a; transition: background 0.15s; }
+    tbody tr:hover { background: #1f1f23; }
+
+    td { padding: 0.75rem 1rem; font-size: 0.875rem; vertical-align: middle; }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .pill-active   { background: #14532d; color: #4ade80; }
+    .pill-inactive { background: #450a0a; color: #f87171; }
+
+    .btn-icon {
+      background: none;
+      border: 1px solid #3f3f46;
+      border-radius: 0.4rem;
+      color: #a1a1aa;
+      cursor: pointer;
+      padding: 4px 8px;
+      font-size: 0.85rem;
+      transition: background 0.15s, color 0.15s;
+      margin-left: 4px;
+    }
+    .btn-icon:hover { background: #27272a; color: #fff; }
+    .btn-icon.danger:hover { background: #450a0a; border-color: #7f1d1d; color: #f87171; }
+
+    .empty-row td { text-align: center; color: #52525b; padding: 2rem; }
+
+    /* ── Form ── */
+    .form-card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 0.3rem; }
+    .field.full { grid-column: 1 / -1; }
+
+    label { font-size: 0.75rem; color: #71717a; font-weight: 500; }
+
+    input, select {
+      background: #09090b;
+      border: 1px solid #3f3f46;
+      border-radius: 0.4rem;
+      color: #e4e4e7;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus { border-color: #6366f1; }
+    input.error { border-color: #f87171; }
+
+    .error-msg { font-size: 0.7rem; color: #f87171; min-height: 1em; }
+
+    .form-footer {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.85rem;
+      color: #a1a1aa;
+      cursor: pointer;
+    }
+
+    .btn {
+      padding: 0.5rem 1.25rem;
+      border-radius: 0.4rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn-primary { background: #6366f1; color: #fff; }
+    .btn-secondary { background: #27272a; color: #e4e4e7; border: 1px solid #3f3f46; }
+
+    #status {
+      font-size: 0.8rem;
+      color: #a1a1aa;
+      margin-left: auto;
+    }
+    #status.ok  { color: #4ade80; }
+    #status.err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Products Admin</h1>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Price</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="product-rows">
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="form-card">
+      <h2 id="form-title">Add Product</h2>
+      <input type="hidden" id="edit-id" value="" />
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="name">Name</label>
+          <input id="name" placeholder="e.g. Cola" />
+        </div>
+        <div class="field">
+          <label for="category">Category</label>
+          <select id="category">
+            <option>Drinks</option>
+            <option>Snacks</option>
+            <option>Food</option>
+            <option>Drugs</option>
+            <option>Questionable</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="price">Price (£)</label>
+          <input id="price" placeholder="e.g. 1.50" inputmode="decimal" />
+          <span class="error-msg" id="price-error"></span>
+        </div>
+      </div>
+
+      <div class="form-footer">
+        <label class="checkbox-label">
+          <input type="checkbox" id="availability" checked />
+          Available
+        </label>
+        <button class="btn btn-primary" onclick="submitForm()">Save</button>
+        <button class="btn btn-secondary" id="cancel-btn" style="display:none" onclick="cancelEdit()">Cancel</button>
+        <span id="status"></span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let products = [];
+
+    async function loadProducts() {
+      try {
+        const res = await fetch("/products");
+        products = await res.json();
+        renderTable();
+      } catch (e) {
+        setStatus("Failed to load products.", false);
+      }
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById("product-rows");
+      if (products.length === 0) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No products yet.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = products.map(p => `
+        <tr>
+          <td style="color:#52525b">${p.product_id}</td>
+          <td style="font-weight:600">${esc(p.product_name)}</td>
+          <td>${esc(p.product_category)}</td>
+          <td>£${p.product_price.toFixed(2)}</td>
+          <td><span class="pill ${p.product_availability ? 'pill-active' : 'pill-inactive'}">${p.product_availability ? 'Active' : 'Hidden'}</span></td>
+          <td>
+            <button class="btn-icon" onclick="startEdit(${p.product_id})" title="Edit">✏️</button>
+            <button class="btn-icon danger" onclick="deleteProduct(${p.product_id})" title="Delete">🗑</button>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function esc(str) {
+      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+
+    function validatePrice(val) {
+      const n = parseFloat(val);
+      if (val.trim() === "" || isNaN(n) || n < 0 || !/^\d+(\.\d{0,2})?$/.test(val.trim())) {
+        return null;
+      }
+      return n;
+    }
+
+    function setStatus(msg, ok) {
+      const el = document.getElementById("status");
+      el.textContent = msg;
+      el.className = ok ? "ok" : "err";
+    }
+
+    function startEdit(id) {
+      const p = products.find(x => x.product_id === id);
+      if (!p) return;
+      document.getElementById("edit-id").value = id;
+      document.getElementById("name").value = p.product_name;
+      document.getElementById("category").value = p.product_category;
+      document.getElementById("price").value = p.product_price.toFixed(2);
+      document.getElementById("availability").checked = p.product_availability;
+      document.getElementById("form-title").textContent = "Edit Product";
+      document.getElementById("cancel-btn").style.display = "";
+      document.getElementById("name").focus();
+    }
+
+    function cancelEdit() {
+      document.getElementById("edit-id").value = "";
+      document.getElementById("name").value = "";
+      document.getElementById("category").value = "Drinks";
+      document.getElementById("price").value = "";
+      document.getElementById("price-error").textContent = "";
+      document.getElementById("price").classList.remove("error");
+      document.getElementById("availability").checked = true;
+      document.getElementById("form-title").textContent = "Add Product";
+      document.getElementById("cancel-btn").style.display = "none";
+      document.getElementById("status").textContent = "";
+    }
+
+    async function submitForm() {
+      const priceVal = document.getElementById("price").value;
+      const price = validatePrice(priceVal);
+
+      if (price === null) {
+        document.getElementById("price").classList.add("error");
+        document.getElementById("price-error").textContent = "Must be a valid positive number (e.g. 1.50)";
+        return;
+      }
+      document.getElementById("price").classList.remove("error");
+      document.getElementById("price-error").textContent = "";
+
+      const body = {
+        product_name: document.getElementById("name").value.trim(),
+        product_category: document.getElementById("category").value,
+        product_price: price,
+        product_availability: document.getElementById("availability").checked,
+      };
+
+      if (!body.product_name) {
+        setStatus("Name is required.", false);
+        return;
+      }
+
+      const editId = document.getElementById("edit-id").value;
+
+      try {
+        if (editId) {
+          await fetch(`/products/${editId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          setStatus("Product updated.", true);
+        } else {
+          await fetch("/products", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          setStatus("Product added.", true);
+        }
+        cancelEdit();
+        loadProducts();
+      } catch (e) {
+        setStatus(`Error: ${e}`, false);
+      }
+    }
+
+    async function deleteProduct(id) {
+      if (!confirm("Delete this product?")) return;
+      try {
+        await fetch(`/products/${id}`, { method: "DELETE" });
+        setStatus("Product deleted.", true);
+        loadProducts();
+      } catch (e) {
+        setStatus(`Error: ${e}`, false);
+      }
+    }
+
+    loadProducts();
+  </script>
+</body>
+</html>

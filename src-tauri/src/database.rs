@@ -7,7 +7,9 @@ const ORDERS_DATABASE_FILE: &str = "ordering_system_data.db";
 const PRODUCTS_FILE: &str = "products.db";
 
 fn orders_db_path(file: &str) -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
     let dir = PathBuf::from(home).join("data");
     let _ = fs::create_dir_all(&dir);
     dir.join(file)
@@ -85,7 +87,9 @@ pub fn new_product(product_name: &str, product_category: &str, product_price: f6
 pub fn delete_product(product_id: i32) -> Result<()> {
     let db_path = orders_db_path(PRODUCTS_FILE);
     if !check_database_exists(db_path.to_str().unwrap_or("")) {
-        return Ok(()); // nothing to delete
+        // initialize_products_database()?;
+        println!("No products database found, created new one. Nothing to delete.");
+        return Ok(());
     }
     let conn = Connection::open(orders_db_path(PRODUCTS_FILE))?;
     conn.execute(
@@ -93,6 +97,20 @@ pub fn delete_product(product_id: i32) -> Result<()> {
         params![product_id],
     )?;
     println!("Product deleted successfully.");
+    Ok(())
+}
+
+pub fn update_product(product_id: i32, product_name: &str, product_category: &str, product_price: f64, product_availability: bool) -> Result<()> {
+    let db_path = orders_db_path(PRODUCTS_FILE);
+    if !check_database_exists(db_path.to_str().unwrap_or("")) {
+        return Ok(()); // nothing to update
+    }
+    let conn = Connection::open(orders_db_path(PRODUCTS_FILE))?;
+    conn.execute(
+        "UPDATE products SET product_name = ?1, product_category = ?2, product_price = ?3, product_availability = ?4 WHERE product_id = ?5",
+        params![product_name, product_category, product_price, product_availability, product_id],
+    )?;
+    println!("Product updated successfully.");
     Ok(())
 }
 

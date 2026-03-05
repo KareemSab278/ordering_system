@@ -461,9 +461,3 @@ Ensure you're calling `POST /api/basket/dispense` after approval.
 - **Async Flow:** Payment approval is asynchronous—Flask thread runs in background while React polls for completion.
 - **Error Recovery:** If payment fails at any stage, the basket is cleared and system returns to idle.
 - **Token Security:** In production, change `API_TOKEN` from default "supersecret" to a strong secret.
-
-
-problem: screen tearing. most likely from gpu issues. 
-something to do with webgl i guess. raspberry pi might not have enough storage ni the gpu, try increasing that.
-if fail then probably do a sudo raspi-config then advanced options then gl driver and select G1 Gl fake kms
-else disable hardware acceleration and do software only.

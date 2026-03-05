@@ -1,6 +1,9 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::sync::Mutex;
+
+static SERVER_PROCESS: Mutex<Option<std::process::Child>> = Mutex::new(None);
 
 mod database;
 
@@ -67,16 +70,33 @@ async fn initialize_payment_server() -> Result<(), String> {
         .ok_or("Failed to determine project root")?
         .to_path_buf();
 
-    Command::new("python3")
+    Command::new(if cfg!(target_os = "windows") { "python" } else { "python3" })
         .arg("app_vend.py")
         .current_dir(&project_root)
         .spawn()
         .map_err(|e| format!("Failed to spawn payment server: {}", e))?;
 
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     Ok(())
 }
 
+#[tauri::command]
+async fn initialize_static_page_server() -> Result<(), String> {
+    let mut handle = SERVER_PROCESS.lock().map_err(|e| e.to_string())?;
+    
+    // Kill existing server if running
+    if let Some(mut child) = handle.take() {
+        let _ = child.kill();
+    }
+
+    let child = Command::new("cargo")
+        .args(["run", "--bin", "server"])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    *handle = Some(child);
+    Ok(())
+}
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -174,7 +194,12 @@ async fn get_pay_state() -> Result<String, String> {
 }
 
 #[tauri::command]
-async fn kill_app() -> Result<(), String> {
+async fn kill_app() -> Result<(), String> { // kills the server and exits the app
+    if let Ok(mut handle) = SERVER_PROCESS.lock() {
+        if let Some(mut child) = handle.take() {
+            let _ = child.kill();
+        }
+    }
     std::process::exit(0);
 }
 
@@ -200,7 +225,17 @@ pub fn run() {
             new_product,
             // Utility
             kill_app,
+            initialize_static_page_server,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Ok(mut handle) = SERVER_PROCESS.lock() {
+                    if let Some(mut child) = handle.take() {
+                        let _ = child.kill();
+                    }
+                }
+            }
+        });
 }
