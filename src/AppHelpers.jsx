@@ -1,4 +1,4 @@
-export { styles, statusIcon, totalPrice, filteredProducts };
+export { styles, statusIcon, totalPrice, filteredProducts, unlockDoor };
 
 const statusIcon = (payStatus) => {
   return (
@@ -13,6 +13,15 @@ const totalPrice = (selectedProducts) => {
     0,
   );
 };
+
+const unlockDoor = async () => {
+  const doorApi = "http://10.20.1.252";
+  try {
+    await fetch(`${doorApi}/open`, { method: "POST" });
+  } catch (error) {
+    console.error("Failed to unlock door:", error);
+  }
+}
 
 const filteredProducts = (products, activeCategory) => {
   return activeCategory === "All"

@@ -132,6 +132,7 @@ function App() {
 
     setPayStatus("done");
     setPayMessage("Payment complete! Thank you.");
+    helpers.unlockDoor();
 
     for (const p of selectedProducts) {
       try {
@@ -369,6 +370,7 @@ function App() {
           />
           <PrimaryButton title="Refresh Products" onClick={() => { fetchProducts(); setAdminModalOpen(false); }} />
           <PrimaryButton title="Open Products Editor" onClick={() => { openEditor(); setAdminModalOpen(false); }} />
+          <PrimaryButton title="Unlock Door" onClick={() => { helpers.unlockDoor(); setAdminModalOpen(false); }} />
           <p>Editor Url Active at: {editorUrl}</p>
         </section>
       }
