@@ -248,10 +248,10 @@ function App() {
     activeCategory === "All"
       ? products.filter((prod) => prod.product_availability)
       : products.filter(
-          (prod) =>
-            prod.product_category === activeCategory &&
-            prod.product_availability,
-        );
+        (prod) =>
+          prod.product_category === activeCategory &&
+          prod.product_availability,
+      );
 
   const checkoutModal = (
     <Modal
@@ -361,14 +361,14 @@ function App() {
         <section>
           <PrimaryButton
             title={fullScreenState ? "Exit Full Screen" : "Enter Full Screen"}
-            onClick={toggleFullScreen}
+            onClick={() => { toggleFullScreen(); setAdminModalOpen(false); }}
           />
           <PrimaryButton
             title="Kill App (Double Click)"
             onDoubleClick={() => invoke("kill_app")}
           />
-          <PrimaryButton title="Refresh Products" onClick={fetchProducts} />
-          <PrimaryButton title="Open Products Editor" onClick={openEditor} />
+          <PrimaryButton title="Refresh Products" onClick={() => { fetchProducts(); setAdminModalOpen(false); }} />
+          <PrimaryButton title="Open Products Editor" onClick={() => { openEditor(); setAdminModalOpen(false); }} />
           <p>Editor Url Active at: {editorUrl}</p>
         </section>
       }
