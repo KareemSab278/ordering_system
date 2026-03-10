@@ -145,6 +145,34 @@
     }
     #status.ok  { color: #4ade80; }
     #status.err { color: #f87171; }
+
+    /* ── Orders ── */
+    .section-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 2.5rem 0 1.25rem;
+      color: #fff;
+    }
+
+    .filter-bar {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 0.75rem;
+      padding: 1rem 1.25rem;
+      display: flex;
+      align-items: flex-end;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+
+    .orders-summary {
+      margin-left: auto;
+      font-size: 0.82rem;
+      color: #a1a1aa;
+      white-space: nowrap;
+    }
+    .orders-summary strong { color: #e4e4e7; }
   </style>
 </head>
 <body>
@@ -205,9 +233,45 @@
         <span id="status"></span>
       </div>
     </div>
+
+    <h1 class="section-title">Orders History</h1>
+
+    <div class="filter-bar">
+      <div class="field">
+        <label for="start-date">From</label>
+        <input type="date" id="start-date" />
+      </div>
+      <div class="field">
+        <label for="end-date">To</label>
+        <input type="date" id="end-date" />
+      </div>
+      <button class="btn btn-primary" onclick="loadOrders()">Filter</button>
+      <button class="btn btn-secondary" onclick="clearOrderFilter()">Clear</button>
+      <button class="btn btn-secondary" onclick="downloadCSV()" id="dl-btn" disabled>⬇ Download CSV</button>
+      <span class="orders-summary" id="orders-summary"></span>
+    </div>
+
+    <div class="table-wrap" style="margin-bottom: 3rem">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Product</th>
+            <th>Category</th>
+            <th>Qty</th>
+            <th>Price</th>
+            <th>Date &amp; Time</th>
+          </tr>
+        </thead>
+        <tbody id="order-rows">
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <script>
+    /* ═══════════════════════════════ PRODUCTS ═══════════════════════════════ */
     let products = [];
 
     async function loadProducts() {
@@ -242,7 +306,7 @@
     }
 
     function esc(str) {
-      return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
 
     function validatePrice(val) {
@@ -345,7 +409,94 @@
       }
     }
 
+    /* ═══════════════════════════════ ORDERS ═════════════════════════════════ */
+    let orders = [];
+
+    async function loadOrders() {
+      const start = document.getElementById("start-date").value;
+      const end   = document.getElementById("end-date").value;
+      const params = new URLSearchParams();
+      if (start) params.set("start_date", start);
+      if (end)   params.set("end_date",   end);
+      const url = "/orders/detail" + (params.toString() ? "?" + params.toString() : "");
+
+      document.getElementById("order-rows").innerHTML =
+        '<tr class="empty-row"><td colspan="6">Loading…</td></tr>';
+      try {
+        const res = await fetch(url);
+        orders = await res.json();
+        renderOrders();
+      } catch (e) {
+        document.getElementById("order-rows").innerHTML =
+          '<tr class="empty-row"><td colspan="6">Failed to load orders.</td></tr>';
+      }
+    }
+
+    function renderOrders() {
+      const tbody = document.getElementById("order-rows");
+      const dlBtn = document.getElementById("dl-btn");
+      const summary = document.getElementById("orders-summary");
+
+      if (!orders.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No orders found.</td></tr>';
+        summary.innerHTML = "";
+        dlBtn.disabled = true;
+        return;
+      }
+
+      const totalRevenue = orders.reduce((s, o) => s + o.price, 0);
+      const totalQty     = orders.reduce((s, o) => s + o.quantity, 0);
+      summary.innerHTML =
+        `<strong>${orders.length}</strong> orders &nbsp;·&nbsp; ` +
+        `<strong>${totalQty}</strong> items &nbsp;·&nbsp; ` +
+        `<strong>£${totalRevenue.toFixed(2)}</strong> total`;
+      dlBtn.disabled = false;
+
+      tbody.innerHTML = orders.map(o => `
+        <tr>
+          <td style="color:#52525b">${o.order_id}</td>
+          <td style="font-weight:600">${esc(o.product_name)}</td>
+          <td>${esc(o.product_category)}</td>
+          <td>${o.quantity}</td>
+          <td>£${o.price.toFixed(2)}</td>
+          <td style="color:#71717a; font-size:0.8rem">${esc(o.timestamp)}</td>
+        </tr>
+      `).join("");
+    }
+
+    function clearOrderFilter() {
+      document.getElementById("start-date").value = "";
+      document.getElementById("end-date").value = "";
+      loadOrders();
+    }
+
+    function downloadCSV() {
+      if (!orders.length) return;
+      const header = ["Order ID", "Product", "Category", "Quantity", "Price (£)", "Timestamp"];
+      const rows = orders.map(o => [
+        o.order_id,
+        `"${String(o.product_name).replace(/"/g, '""')}"`,
+        `"${String(o.product_category).replace(/"/g, '""')}"`,
+        o.quantity,
+        o.price.toFixed(2),
+        `"${o.timestamp}"`,
+      ]);
+      const csv = [header, ...rows].map(r => r.join(",")).join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      const now  = new Date().toISOString().slice(0, 10);
+      a.href     = url;
+      a.download = `orders_${now}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    /* ═════════════════════════════ INIT ════════════════════════════════════ */
     loadProducts();
+    loadOrders();
   </script>
 </body>
 </html>

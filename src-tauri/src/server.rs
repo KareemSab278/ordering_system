@@ -1,7 +1,7 @@
 use axum::{
     routing::{get, delete, put, post},
     Json, Router,
-    extract::Path,
+    extract::{Path, Query},
     response::IntoResponse,
     http::StatusCode,
 };
@@ -52,6 +52,25 @@ async fn remove_product(Path(id): Path<i32>) -> impl IntoResponse {
     }
 }
 
+async fn view_orders() -> Json<Vec<database::Order>> {
+    let orders = database::view_orders().unwrap_or_default();
+    Json(orders)
+}
+
+#[derive(Deserialize)]
+struct OrdersQuery {
+    start_date: Option<String>,
+    end_date: Option<String>,
+}
+
+async fn view_orders_detail(Query(params): Query<OrdersQuery>) -> Json<Vec<database::OrderWithProduct>> {
+    let orders = database::view_orders_with_products(
+        params.start_date.as_deref(),
+        params.end_date.as_deref(),
+    ).unwrap_or_default();
+    Json(orders)
+}
+
 async fn edit_product(Path(id): Path<i32>, Json(payload): Json<NewProduct>) -> impl IntoResponse {
     println!("PUT /products/{} payload: name='{}' category='{}' price={} avail={}", id, payload.product_name, payload.product_category, payload.product_price, payload.product_availability);
     match database::update_product(
@@ -84,6 +103,8 @@ pub async fn start() {
     let app = Router::new()
         .route("/products", get(get_products).post(create_product))
         .route("/products/:id", delete(remove_product).put(edit_product))
+        .route("/orders", get(view_orders))
+        .route("/orders/detail", get(view_orders_detail))
         .fallback_service(ServeDir::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/static")));
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let local_ip = get_local_ip();
