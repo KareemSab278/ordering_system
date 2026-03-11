@@ -31,7 +31,7 @@ function App() {
   const [editorUrl, setEditorUrl] = useState("");
 
   const pollRef = useRef(null);
-  const cancelledRef = useRef(false);
+  const cancelledRef = useRef(false); 
 
   useEffect(() => {
     const getProductsOnMount = async () => {
