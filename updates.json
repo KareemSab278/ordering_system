@@ -1,11 +1,11 @@
 {
-  "version": "v0.1.5",
-  "notes": "can now work with motion sensor and has a screensaver now",
-  "pub_date": "2026-03-13T08:21:33Z",
+  "version": "v0.1.6",
+  "notes": "base64 encode sign",
+  "pub_date": "2026-03-13T09:19:06Z",
   "platforms": {
     "linux-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSU0FSK1ArYzZPS0IvY1hpcnlhTlpJTmFOa2FyV1l3QmJYUUdLZWRwYUhlY0tOdmdEWDliOHdwZ3FudkFXNXBJMmoyM2dnSEFyc3ozK1ZmT1Z3NDNIbjhLZTZNdlN2T2dRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzczNzQyODM5CWZpbGU6b3JkZXJpbmdfc3lzdGVtXzAuMS4zX2FtZDY0LmRlYgo3bUtSN1pqajFuTXF0eTQ5QThXaWUwbCtieDBUVjZaOFhmczdKSEJ2am5ybFdHQ2g5QVowUTFtd0cvaHF3ZmNTczU3Y2pmUEYzaXV3czc4U2pHNmpEdz09Cg==",
-      "url": "https://raw.githubusercontent.com/KareemSab278/ordering_system/main/OTA/ordering_system_0.1.5_arm64.deb"
+      "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZTVTBGU0sxQXJZelpQUzA5eVozTTJOa0poU2xSbFdtSjRPWEp4Y2twbU0wODBRMGhLVWpFdlkyczBUamRWYXpKWlJqVmFkbGRpYm5aMVFrTnRkR0owWkRCS2RtdG1SVE5rWjFVM2NscFhOR3RKVFM5d2NuWkZha3BYTDNwelRXZDNQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94Tnpjek16a3pOVFExQ1dacGJHVTZiM0prWlhKcGJtZGZjM2x6ZEdWdFh6QXVNUzQyWDJGeWJUWTBMbVJsWWdwck9GbEtjVmhwV1VNMVprUkVWRXhyZVdabGRqTlhPRmMyVmtwak4wWkJSalp5ZG01U2NFWjFZVWx6U1RsV1oyVjBiWHB3WjAxRFowVm5ZWGxxUVhkUFUyYzJiRzVJUTFweFptZEhORFJNV2xoMlREVkJaejA5Q2c9PQ==",
+      "url": "https://raw.githubusercontent.com/KareemSab278/ordering_system/main/OTA/ordering_system_0.1.6_arm64.deb"
     }
   }
 }
