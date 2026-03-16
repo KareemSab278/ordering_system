@@ -28,6 +28,6 @@ dist-ssr
 /.venv/
 
 updater-key.pem
-updater-pubkey.b64
+updater_private.pem
 
 signature.b64
