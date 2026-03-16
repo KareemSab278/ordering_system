@@ -275,10 +275,10 @@ function App() {
     activeCategory === "All"
       ? products.filter((prod) => prod.product_availability)
       : products.filter(
-          (prod) =>
-            prod.product_category === activeCategory &&
-            prod.product_availability,
-        );
+        (prod) =>
+          prod.product_category === activeCategory &&
+          prod.product_availability,
+      );
 
   const checkoutModal = (
     <Modal
@@ -378,6 +378,23 @@ function App() {
     />
   );
 
+
+  const adminOptions = [
+    {
+      title: fullScreenState ? "Exit Full Screen" : "Enter Full Screen", onClick: () => {
+        toggleFullScreen();
+      }
+    },
+    { title: "Kill App (Double Click)", onClick: () => invoke("kill_app"), doubleClick: true },
+    { title: "Refresh Products", onClick: () => fetchProducts() },
+    { title: "Open Products Editor", onClick: () => openEditor() },
+    { title: "Unlock Door", onClick: () => hardware.unlockDoor() },
+    { title: "Check for Updates", onClick: () => updateHandler() },
+    { title: "Set Light Green", onClick: () => hardware.setLightsColor("green") },
+    { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
+    { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
+  ];
+  
   const adminModal = (
     <Modal
       opened={adminModalOpen}
@@ -386,59 +403,14 @@ function App() {
       innerStyle={{ maxWidth: "560px" }}
       children={
         <section>
-          <PrimaryButton
-            title={fullScreenState ? "Exit Full Screen" : "Enter Full Screen"}
-            onClick={() => {
-              toggleFullScreen();
-              setAdminModalOpen(false);
-            }}
-          />
-          <PrimaryButton
-            title="Kill App (Double Click)"
-            onDoubleClick={() => invoke("kill_app")}
-          />
-          <PrimaryButton
-            title="Refresh Products"
-            onClick={() => {
-              fetchProducts();
-              setAdminModalOpen(false);
-            }}
-          />
-          <PrimaryButton
-            title="Open Products Editor"
-            onClick={() => {
-              openEditor();
-              setAdminModalOpen(false);
-            }}
-          />
-          <PrimaryButton
-            title="Unlock Door"
-            onClick={() => {
-              helpers.unlockDoor();
-              setAdminModalOpen(false);
-            }}
-          />
-          <PrimaryButton
-            title="Set Light Green"
-            onClick={() => {
-              hardware.setLightsColor("green");
-              setAdminModalOpen(false);
-            }}
-          />
-          <PrimaryButton
-            title="Set Light Red"
-            onClick={() => {
-              hardware.setLightsColor("red");
-              setAdminModalOpen(false);
-            }}
-          />
-          <PrimaryButton
-            title="Set Light Blue"
-            onClick={() => {
-              hardware.setLightsColor("blue");
-              setAdminModalOpen(false);
-            }}
-          />
+          {adminOptions.map((opt, idx) => (
+            <PrimaryButton
+              key={idx}
+              title={opt.title}
+              onClick={() => { opt.onClick(); setAdminModalOpen(false); }}
+              doubleClick={opt.doubleClick}
+            />
+          ))}
           <p>Editor Url Active at: {editorUrl}</p>
         </section>
       }

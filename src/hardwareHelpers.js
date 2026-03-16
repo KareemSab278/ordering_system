@@ -1,5 +1,7 @@
 export { unlockDoor, isDoorClosed, setLightsColor };
 
+const doorApi = import.meta.env.VITE_DOOR_API_URL;
+
 const unlockDoor = async () => {
   try {
     const res = await fetch(`${doorApi}/open`, { method: "POST" });

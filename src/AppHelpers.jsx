@@ -18,7 +18,6 @@ import {
   IconCookie,
   IconShoppingBag,
 } from "@tabler/icons-react";
-const doorApi = import.meta.env.VITE_DOOR_API_URL;
 
 const statusIcon = (payStatus) => {
   const iconProps = { size: 56, stroke: 1.5, color: "#fff" };
