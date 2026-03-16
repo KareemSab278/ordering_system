@@ -1,38 +1,40 @@
 import argparse
 import base64
-import pathlib
-
 from cryptography.hazmat.primitives import serialization
-from nacl.signing import SigningKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 def main():
     p = argparse.ArgumentParser(
         description="Sign a build artifact for Tauri updater (Ed25519)."
     )
-    p.add_argument("key", help="Path to updater-key.pem")
-    p.add_argument("artifact", help="Path to the build artifact to sign (e.g. .deb)")
+    p.add_argument("key", help="Path to updater_private.pem")
+    p.add_argument("artifact", help="Path to the .deb you want to sign")
     p.add_argument(
         "--out",
+        "-o",
         default="signature.b64",
         help="Output file for base64 signature (default: signature.b64)",
     )
     args = p.parse_args()
 
-    pem = pathlib.Path(args.key).read_bytes()
-    priv = serialization.load_pem_private_key(pem, password=None)
-    raw = priv.private_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PrivateFormat.Raw,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
+    with open(args.key, "rb") as f:
+        priv = serialization.load_pem_private_key(f.read(), password=None)
 
-    sk = SigningKey(raw)
-    msg = pathlib.Path(args.artifact).read_bytes()
-    sig = sk.sign(msg).signature
-    out = base64.b64encode(sig).decode()
+    if not isinstance(priv, Ed25519PrivateKey):
+        raise SystemExit("Private key is not Ed25519")
 
-    pathlib.Path(args.out).write_text(out)
-    print(f"wrote {args.out}")
+    with open(args.artifact, "rb") as f:
+        data = f.read()
+
+    sig = priv.sign(data)
+    b64 = base64.b64encode(sig).decode("ascii")
+
+    with open(args.out, "w") as f:
+        f.write(b64)
+
+    print("Wrote base64 signature to", args.out)
 
 if __name__ == "__main__":
     main()
+    
+# python sign_new_build.py updater_private.pem builds/ordering_system_0.1.0_arm64.deb
