@@ -4,7 +4,7 @@
   "pub_date": "2024-03-12T12:00:00Z",
   "platforms": {
     "linux-aarch64": {
-      "signature": "YOUR_SIGNATURE_HERE",
+      "signature": "bQg06ZW9ZSu6CXs+O6v1rh1GKM7tMpAsV3UTi+CabaqmtbF8u9CvhZGRp7f6Me1y8lR4gd1hF+xke51gcusFAg==",
       "url": "the url to the update file for operating system linux and architecture aarch64"
     }
   }

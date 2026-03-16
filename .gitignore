@@ -25,3 +25,9 @@ dist-ssr
 .env
 /vcpkg/
 ~/.tauri/
+/.venv/
+
+updater-key.pem
+updater-pubkey.b64
+
+signature.b64
