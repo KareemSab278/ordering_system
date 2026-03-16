@@ -1,4 +1,5 @@
 import { RemoveButton } from "./Button";
+import { QuantityBadge } from "./QuantityBadge";
 import { getProductIcon } from "../AppHelpers";
 
 export { ProductCard };
@@ -10,6 +11,8 @@ const ProductCard = ({
   onClick = new Function(),
   children,
   selected,
+  count = 0,
+  showRemoveButton = false,
   onRemove = new Function(),
 }) => {
   const displayTitle = title || (product.product_name.length > 20 ? `${product.product_name.substring(0, 20)}...` : product.product_name);
@@ -17,12 +20,12 @@ const ProductCard = ({
   return (
     <div style={styles.card} onClick={() => onClick(product)}>
       <div style={styles.titleRow}>
-        <span style={styles.iconWrapper}>
-          {getProductIcon(product.product_name, product.product_category)}
-        </span>
         <h3 style={styles.title}>{displayTitle} - £{product.product_price.toFixed(2)}</h3>
+        <QuantityBadge count={count} />
       </div>
-      {selected && <RemoveButton onClick={() => onRemove(product)} />}
+      {selected && showRemoveButton && (
+        <RemoveButton onClick={() => onRemove(product)} />
+      )}
       {children}
     </div>
   );
@@ -30,6 +33,7 @@ const ProductCard = ({
 
 const styles = {
   card: {
+    position: "relative",
     backgroundColor: "rgba(99, 99, 99, 0.42)",
     fontFamily:
       'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',

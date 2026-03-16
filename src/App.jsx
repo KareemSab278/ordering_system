@@ -325,8 +325,9 @@ function App() {
               <ProductCard
                 key={prod.product_id}
                 product={prod}
-                title={`${prod.product_name} (Qty: ${prod.count})`}
+                title={`${prod.product_name} x${prod.count}`}
                 selected
+                showRemoveButton
                 onRemove={() => appendProduct(prod, "-")}
               />
             ))}
@@ -355,13 +356,22 @@ function App() {
   const productsSection = (
     <section style={helpers.styles.productsSection}>
       {products.length > 0 ? (
-        filteredProducts.map((product) => (
-          <ProductCard
-            key={product.product_id}
-            product={product}
-            onClick={() => appendProduct(product, "+")}
-          />
-        ))
+        filteredProducts.map((product) => {
+          const inBasket = selectedProducts.find(
+            (p) => p.product_id === product.product_id,
+          );
+
+          return (
+            <ProductCard
+              key={product.product_id}
+              product={product}
+              onClick={() => appendProduct(product, "+")}
+              selected={!!inBasket}
+              count={inBasket?.count || 0}
+              showRemoveButton={false}
+            />
+          );
+        })
       ) : (
         <div style={helpers.styles.noProductsMessage}>
           No products available.
