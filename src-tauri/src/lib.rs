@@ -84,6 +84,21 @@ async fn initialize_payment_server() -> Result<(), String> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+async fn terminate_payment() -> Result<(), String> {
+    // comminucate with the Flask server to tell the nayax reader to stop waiting for payments
+    let client = make_client()?;
+    let _= client
+        .post(format!("{}/api/state/terminate", FLASK_BASE))
+        .header("Authorization", auth_header())
+        .send()
+        .await
+        .map_err(|e| format!("Failed to terminate payment: {}", e))?;
+    Ok(())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
 async fn initialize_static_page_server() -> Result<(), String> {
     tokio::spawn(server::start());
     Ok(())
@@ -235,6 +250,7 @@ pub fn run() {
             initiate_payment,
             get_pay_state,
             initialize_payment_server,
+            terminate_payment,
             // DB related commands
             initialize_database,
             insert_order,

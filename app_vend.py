@@ -14,7 +14,7 @@ from flask import Flask, request, jsonify, Response, abort
 # ----------------------------
 # Config (env overridable)
 # ----------------------------
-SERIAL_PORT = os.environ.get("MDB_PORT", "/dev/ttyUSB0")
+SERIAL_PORT = os.environ.get("MDB_PORT", "/dev/ttyUSB1")
 BAUDRATE = int(os.environ.get("MDB_BAUD", "115200"))
 READ_TIMEOUT_S = float(os.environ.get("MDB_READ_TIMEOUT", "0.2"))
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
@@ -73,6 +73,7 @@ class MdbBridge:
 
         self._rx_thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
+        self._pay_cancel = threading.Event()
 
         self.events: "queue.Queue[Event]" = queue.Queue(maxsize=5000)
         self._pending_lines: "queue.Queue[str]" = queue.Queue()
@@ -338,12 +339,17 @@ def _pay_flow(items: List[Dict[str, Any]]):
         set_status("Waiting for cashless device ready…")
         deadline = time.time() + 8.0
         while time.time() < deadline:
+            if bridge._pay_cancel.is_set():
+                return
             with bridge.state_lock:
                 rdy = bridge.state["cashless"].get("ready_seen", False)
             if rdy:
                 break
             time.sleep(0.2)
         # Proceed even if READY was missed (some devices skip it)
+
+        if bridge._pay_cancel.is_set():
+            return
 
         # 3. ENABLE
         set_status("Enabling cashless device…")
@@ -369,6 +375,8 @@ def _pay_flow(items: List[Dict[str, Any]]):
             set_status("Please tap your contactless card…")
             deadline = time.time() + CARD_TAP_TIMEOUT_S
             while time.time() < deadline:
+                if bridge._pay_cancel.is_set():
+                    return
                 with bridge.state_lock:
                     began = bridge.state["cashless"].get("last_begin") is not None
                 if began:
@@ -384,6 +392,8 @@ def _pay_flow(items: List[Dict[str, Any]]):
         # 5. Wait for VNDAPP (card approved) or VNDDEN (declined)
         deadline = time.time() + VNDAPP_TIMEOUT_S
         while time.time() < deadline:
+            if bridge._pay_cancel.is_set():
+                return
             with bridge.state_lock:
                 vndapp = bridge.state["cashless"].get("last_vndapp")
                 vndden = bridge.state["cashless"].get("last_vndden")
@@ -444,6 +454,7 @@ def api_basket_pay():
             ],
         }
 
+    bridge._pay_cancel.clear()
     t = threading.Thread(target=_pay_flow, args=(items,), daemon=True, name="pay-flow")
     t.start()
 
@@ -496,6 +507,25 @@ def api_basket_dispense():
         bridge.state["pay"]["in_progress"] = False
 
     return jsonify({"ok": True, "done": True, "remaining": 0, "lines": lines})
+
+
+@app.post("/api/state/terminate")
+def api_state_terminate():
+    require_token(request)
+    bridge._pay_cancel.set()
+    try:
+        bridge.send_and_wait_any(f"CSLS{CASHLESS_X}CANCEL", timeout_s=1.5)
+    except Exception:
+        pass
+    with bridge.state_lock:
+        bridge.state["pay"] = {
+            "in_progress": False,
+            "approved": False,
+            "last_status": "",
+            "last_error": "",
+            "pending_items": [],
+        }
+    return jsonify({"ok": True})
 
 
 # ── Existing endpoints ────────────────────────────────────────────────────────

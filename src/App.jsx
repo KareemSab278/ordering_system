@@ -14,7 +14,7 @@ import { updateHandler } from "./updateHandler";
 export { App, CATEGORIES };
 
 const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
-const INITIAL_STATE_FULLSCREEN = true;
+const INITIAL_STATE_FULLSCREEN = false;
 
 function App() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -239,12 +239,13 @@ function App() {
     }
   };
 
-  const handleCheckoutCancel = () => {
+  const handleCheckoutCancel = async() => {
     cancelledRef.current = true;
     stopPolling();
     setCheckoutActive(false);
     setPayStatus("idle");
     setPayMessage("");
+    await invoke("terminate_payment");
   };
 
   const resetCheckoutState = () => {
