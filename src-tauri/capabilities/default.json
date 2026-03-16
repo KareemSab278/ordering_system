@@ -6,6 +6,9 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "core:window:allow-set-fullscreen"
+    "core:window:allow-set-fullscreen",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-ask"
   ]
 }
