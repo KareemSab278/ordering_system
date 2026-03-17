@@ -1,9 +1,12 @@
+use std::sync::Arc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool};
 
 mod database;
 mod server;
+pub mod motion_sensor;
 
 const FLASK_BASE: &str = "http://127.0.0.1:8080";
 const API_TOKEN: &str = "supersecret";
@@ -185,6 +188,14 @@ async fn dispense_item(slot: u32, success: bool) -> Result<String, String> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+async fn get_motion_event() -> Result<bool, bool> { // returns Ok(true) if motion detected, Ok(false) if no motion, Err(false) if error
+    let running = Arc::new(AtomicBool::new(true));
+    motion_sensor::start(running.clone())
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
 async fn get_pay_state() -> Result<String, String> {
     let client = make_client()?;
 
@@ -260,6 +271,8 @@ pub fn run() {
             new_product,
             // Door
             get_door_status,
+            // Sensor
+            get_motion_event,
             // Utility
             kill_app,
             initialize_static_page_server,
