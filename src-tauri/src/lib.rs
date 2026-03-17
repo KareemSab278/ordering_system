@@ -1,16 +1,6 @@
-use std::sync::Arc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
-use std::sync::atomic::{AtomicBool};
-use axum::{
-    extract::{Path, Query},
-    http::StatusCode,
-    response::IntoResponse,
-    routing::{delete, get, post, put},
-    Router,
-};
-
 mod database;
 mod server;
 pub mod motion_sensor;
@@ -194,27 +184,6 @@ async fn dispense_item(slot: u32, success: bool) -> Result<String, String> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-
-#[tauri::command]
-async fn get_motion_event() -> Result<bool, String> {
-    loop {
-        let running = Arc::new(AtomicBool::new(true));
-        let running_clone = running.clone();
-
-        let motion_seen = tokio::task::spawn_blocking(move || motion_sensor::start(running_clone))
-            .await
-            .map_err(|e| format!("Sensor thread join error: {}", e))?;
-
-        if motion_seen {
-            return Ok(true); // only resolves when motion is detected
-        }
-
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-
 #[tauri::command]
 async fn get_pay_state() -> Result<String, String> {
     let client = make_client()?;
@@ -291,8 +260,6 @@ pub fn run() {
             new_product,
             // Door
             get_door_status,
-            // Sensor
-            get_motion_event,
             // Utility
             kill_app,
             initialize_static_page_server,
@@ -304,6 +271,10 @@ pub fn run() {
             let _ = app
                 .handle()
                 .plugin(tauri_plugin_updater::Builder::new().build());
+
+            // Start the persistent motion sensor listener
+            motion_sensor::start_motion_listener(app.handle().clone());
+
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -1,6 +1,7 @@
-export { unlockDoor, isDoorClosed, setLightsColor, getMotionEvent };
+export { unlockDoor, isDoorClosed, setLightsColor, listenToMotionSensor };
 
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 const doorApi = import.meta.env.VITE_DOOR_API_URL;
 
@@ -59,15 +60,10 @@ const isDoorClosed = async () => {
   }
 };
 
-const getMotionEvent = async () => {
-  try {
-    const motionDetected = await invoke("get_motion_event");
-    if (motionDetected === true) {
-      console.log("[Motion] Motion detected!");
-      return true;
-    }
-  } catch (error) {
-    console.error("[Motion] Error:", error);
-  }
-  return false;
+const listenToMotionSensor = async (onMotion) => {
+  const unlisten = await listen("motion-detected", () => {
+    console.log("[Motion] Motion detected!");
+    onMotion();
+  });
+  return unlisten; // call this to stop listening
 };

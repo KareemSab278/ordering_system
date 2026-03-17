@@ -32,13 +32,19 @@ function App() {
   const [payMessage, setPayMessage] = useState("");
   const [editorUrl, setEditorUrl] = useState("");
 
-  const pollRef = useRef(null);
-  const cancelledRef = useRef(false);
+  const unlistenMotionRef = useRef(null);
 
   useEffect(() => {
     const getProductsOnMount = async () => {
       const prods = await invoke("query_products");
       setProducts(prods);
+    };
+
+    const listenToMotionSensor = async () => {
+      unlistenMotionRef.current = await hardware.listenToMotionSensor(() => {
+        console.log("[App] Motion event received");
+        // add any wake-up / UI logic here
+      });
     };
 
     const initializePaymentServer = async () => {
@@ -84,6 +90,7 @@ function App() {
     initializeStaticServer();
     fetchProducts();
     initializePaymentServer();
+    listenToMotionSensor();
 
     const timer = setTimeout(() => {
       getCurrentWindow().setFullscreen(INITIAL_STATE_FULLSCREEN);
@@ -92,6 +99,7 @@ function App() {
     return () => {
       clearTimeout(timer);
       if (pollRef.current) clearInterval(pollRef.current);
+      if (unlistenMotionRef.current) unlistenMotionRef.current();
     };
   }, []);
 
@@ -239,7 +247,7 @@ function App() {
     }
   };
 
-  const handleCheckoutCancel = async() => {
+  const handleCheckoutCancel = async () => {
     cancelledRef.current = true;
     stopPolling();
     setCheckoutActive(false);
@@ -405,7 +413,7 @@ function App() {
     { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
     { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
   ];
-  
+
   const adminModal = (
     <Modal
       opened={adminModalOpen}

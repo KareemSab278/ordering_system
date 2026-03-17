@@ -1,41 +1,47 @@
 use rppal::gpio::Gpio;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+use tauri::Emitter;
 
 const PIR_PIN: u8 = 26;
 
-pub fn start(running: Arc<AtomicBool>) -> bool {
-    let gpio = match Gpio::new() {
-        Ok(g) => g,
-        Err(e) => {
-            eprintln!("Failed to initialize GPIO: {}", e);
-            return false;
+pub fn start_motion_listener(app_handle: tauri::AppHandle) {
+    thread::spawn(move || {
+        let gpio = match Gpio::new() {
+            Ok(g) => g,
+            Err(e) => {
+                eprintln!("Failed to initialize GPIO: {}", e);
+                return;
+            }
+        };
+
+        let pin = match gpio.get(PIR_PIN) {
+            Ok(p) => p.into_input(),
+            Err(e) => {
+                eprintln!("Failed to get GPIO pin {}: {}", PIR_PIN, e);
+                return;
+            }
+        };
+
+        println!("Motion sensor initialised, listening...");
+        thread::sleep(Duration::from_secs(2));
+        println!("Motion sensor active");
+
+        let mut last_state = false;
+
+        loop {
+            let is_high = pin.is_high();
+
+            // Only fire on rising edge (low -> high)
+            if is_high && !last_state {
+                println!("Motion detected!");
+                if let Err(e) = app_handle.emit("motion-detected", true) {
+                    eprintln!("Failed to emit motion event: {}", e);
+                }
+            }
+
+            last_state = is_high;
+            thread::sleep(Duration::from_millis(50));
         }
-    };
-
-    let pin = match gpio.get(PIR_PIN) {
-        Ok(p) => p.into_input(),
-        Err(e) => {
-            eprintln!("Failed to get GPIO pin {}: {}", PIR_PIN, e);
-            return false;
-        }
-    };
-
-    println!("Sensor initialised . . .");
-    thread::sleep(Duration::from_secs(2));
-    println!("Active");
-
-    while running.load(Ordering::SeqCst) {
-        if pin.is_high() {
-            println!("Object detected!");
-            thread::sleep(Duration::from_millis(300));
-            return true;
-        }
-
-        thread::sleep(Duration::from_millis(50));
-    }
-
-    false
+    });
 }
