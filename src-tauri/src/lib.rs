@@ -3,6 +3,13 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::atomic::{AtomicBool};
+use axum::{
+    extract::{Path, Query},
+    http::StatusCode,
+    response::IntoResponse,
+    routing::{delete, get, post, put},
+    Router,
+};
 
 mod database;
 mod server;
@@ -187,10 +194,17 @@ async fn dispense_item(slot: u32, success: bool) -> Result<String, String> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+
 #[tauri::command]
-async fn get_motion_event() -> Result<bool, bool> { // returns Ok(true) if motion detected, Ok(false) if no motion, Err(false) if error
+async fn get_motion_event() -> Result<bool, String> {
     let running = Arc::new(AtomicBool::new(true));
-    motion_sensor::start(running.clone())
+    let running_clone = running.clone();
+
+    let motion_seen = tokio::task::spawn_blocking(move || motion_sensor::start(running_clone))
+        .await
+        .map_err(|e| format!("Sensor thread join error: {}", e))?;
+
+    Ok(motion_seen)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

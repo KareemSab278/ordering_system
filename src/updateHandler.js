@@ -33,6 +33,8 @@ const updateHandler = async () => {
         }
         await relaunch();
       }
+    } else if (update == null || !update){
+      await ask ("You are already running the latest version.", { title: "No Update Available", type: "info" });
     }
   } catch (e) {
     console.error("Update check failed:", e);

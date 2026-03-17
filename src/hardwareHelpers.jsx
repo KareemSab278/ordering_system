@@ -1,4 +1,4 @@
-export { unlockDoor, isDoorClosed, setLightsColor };
+export { unlockDoor, isDoorClosed, setLightsColor, getMotionEvent };
 
 import { invoke } from "@tauri-apps/api/core";
 
@@ -55,6 +55,17 @@ const isDoorClosed = async () => {
     return doorStatus?.lock_state === "closed";
   } catch (error) {
     console.error("Failed to get door status:", error);
+    return false;
+  }
+};
+
+const getMotionEvent = async () => {
+  try {
+    const motionDetected = await invoke("get_motion_event");
+    console.log("Motion event response:", motionDetected);
+    return motionDetected;
+  } catch (error) {
+    console.error("Failed to get motion event:", error);
     return false;
   }
 };
