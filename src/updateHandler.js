@@ -25,11 +25,25 @@ const updateHandler = async () => {
         });
 
         if (downloadedPath) {
-            console.log("installing from downloadpath")
-          await invoke("install_deb", { path: downloadedPath });
+          console.log("installing from downloadpath");
+          try {
+            await invoke("install_deb", { path: downloadedPath });
+            console.log("install_deb succeeded");
+          } catch (err) {
+            console.error("install_deb failed:", err);
+            await ask(`Failed to install update: ${err}`, { title: "Install Error", type: "error" });
+            return;
+          }
         } else {
-            console.log("Doanload and install triggered");
-          await update.downloadAndInstall();
+          console.log("Download and install triggered");
+          try {
+            await update.downloadAndInstall();
+            console.log("downloadAndInstall succeeded");
+          } catch (err) {
+            console.error("downloadAndInstall failed:", err);
+            await ask(`Failed to install update: ${err}`, { title: "Install Error", type: "error" });
+            return;
+          }
         }
         await relaunch();
       }
