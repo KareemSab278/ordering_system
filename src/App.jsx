@@ -8,7 +8,7 @@ import { PrimaryButton } from "./Components/Button";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as helpers from "./AppHelpers";
-import * as hardware from "./hardwareHelpers"
+import * as hardware from "./hardwareHelpers";
 import { updateHandler } from "./updateHandler";
 import { ScreenSaver } from "./Components/ScreenSaver";
 
@@ -16,6 +16,10 @@ export { App, CATEGORIES };
 
 const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
 const INITIAL_STATE_FULLSCREEN = true;
+const UPDATE_CHECK_INTERVAL = 86400000;
+const SCREENSAVER_TIMEOUT_MINUTES = 0.1;
+const FETCH_PRODUCTS_INTERVAL = 6000;
+
 
 function App() {
   const [modalOpen, setModalOpen] = useState(false);
@@ -52,7 +56,7 @@ function App() {
 
     inactivityTimerRef.current = setTimeout(() => {
       setScreenSaverActive(true);
-    }, 0.1 * 60 * 1000);
+    }, SCREENSAVER_TIMEOUT_MINUTES * 60 * 1000);
   };
 
   const resetInactivityTimer = () => {
@@ -107,7 +111,7 @@ function App() {
         } catch (e) {
           console.error("Failed to check for updates:", e);
         }
-      }, 86400000); // 24 hours now
+      }, UPDATE_CHECK_INTERVAL);
     };
 
     getUpdates();
@@ -156,7 +160,7 @@ function App() {
       } catch (e) {
         console.error("Failed to fetch products:", e);
       }
-    }, 6000);
+    }, FETCH_PRODUCTS_INTERVAL);
   };
 
   const stopPolling = () => {
@@ -222,7 +226,7 @@ function App() {
         setPayStatus("done");
         setPayMessage("Thank you! Please come again.");
         setModalOpen(false);
-        // close checkout modal after a short pause
+
         setTimeout(() => {
           if (!cancelledRef.current) {
             resetCheckoutState();
