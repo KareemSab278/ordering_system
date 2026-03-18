@@ -1,11 +1,11 @@
 {
   "version": "v0.1.6",
-  "notes": "base64 encode sign",
-  "pub_date": "2026-03-13T09:19:06Z",
+  "notes": "Version 0.1.6 release.",
+  "pub_date": "2026-03-18T10:20:36Z",
   "platforms": {
-    "linux-aarch64": {
-      "signature": "ZFc1MGNuVnpkR1ZrSUdOdmJXMWxiblE2SUhOcFoyNWhkSFZ5WlNCbWNtOXRJSFJoZFhKcElITmxZM0psZENCclpYa0tVbFZTVTBGU0sxQXJZelpQUzA5eVozTTJOa0poU2xSbFdtSjRPWEp4Y2twbU0wODBRMGhLVWpFdlkyczBUamRWYXpKWlJqVmFkbGRpYm5aMVFrTnRkR0owWkRCS2RtdG1SVE5rWjFVM2NscFhOR3RKVFM5d2NuWkZha3BYTDNwelRXZDNQUXAwY25WemRHVmtJR052YlcxbGJuUTZJSFJwYldWemRHRnRjRG94Tnpjek16a3pOVFExQ1dacGJHVTZiM0prWlhKcGJtZGZjM2x6ZEdWdFh6QXVNUzQyWDJGeWJUWTBMbVJsWWdwck9GbEtjVmhwV1VNMVprUkVWRXhyZVdabGRqTlhPRmMyVmtwak4wWkJSalp5ZG01U2NFWjFZVWx6U1RsV1oyVjBiWHB3WjAxRFowVm5ZWGxxUVhkUFUyYzJiRzVJUTFweFptZEhORFJNV2xoMlREVkJaejA5Q2c9PQ==",
-      "url": "https://raw.githubusercontent.com/KareemSab278/ordering_system/main/OTA/ordering_system_0.1.6_arm64.deb"
+    "linux-x86_64": {
+      "signature": "untrusted comment: signature from tauri secret key\nRUR8xRaB9RUC0GxhhwT2OHqHCk9ftuN1iopwpxfhT0GdDut3Ubd4Mqp7F/EcpBVeC1w5bSf2BAbGjDNEo717ITOECwT4IT9kNAU=\ntrusted comment: timestamp:1773829236\tfile:ordering_system_0.1.6_amd64.deb\nan2iCbw8DM+p6rHMI/UNlds6AFSH7BnudNBq4afQAXQXo9X7G2YaeGH7M6ntl/3W52XIQQ2H57j4DDSRUnkPCg==",
+      "url": "https://raw.githubusercontent.com/KareemSab278/ordering_system/main/OTA/ordering_system_0.1.6_amd64.deb"
     }
   }
 }
