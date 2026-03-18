@@ -15,7 +15,6 @@ export { App, CATEGORIES };
 
 const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
 const INITIAL_STATE_FULLSCREEN = true;
-const UPDATE_CHECK_INTERVAL = 86400000;
 const SCREENSAVER_TIMEOUT_MINUTES = 0.1;
 const FETCH_PRODUCTS_INTERVAL = 6000;
 

@@ -1,19 +1,22 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import importedImages from '../imageImporter';
 
 export { ScreenSaver };
 
-const INTERVAL = 10;
+const INTERVAL = 8; // seconds
 
-const ScreenSaver = ({ images = Object.values(importedImages), onClose }) => {
+const ScreenSaver = ({ images, onClose }) => {
+  const defaultImages = useMemo(() => Object.values(importedImages), []);
+  const slides = images ?? defaultImages;
+
   const [currentIndex, setCurrentIndex] = useState(0);
   const pollRef = useRef(null);
 
   useEffect(() => {
-    if (!images.length) return;
+    if (!slides.length) return;
 
     pollRef.current = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % images.length);
+      setCurrentIndex((prev) => (prev + 1) % slides.length);
     }, INTERVAL * 1000);
 
     return () => {
@@ -21,7 +24,7 @@ const ScreenSaver = ({ images = Object.values(importedImages), onClose }) => {
         clearInterval(pollRef.current);
       }
     };
-  }, [images]);
+  }, [slides]);
 
   const handleScreenTap = () => {
     if (pollRef.current) {
@@ -43,13 +46,13 @@ const ScreenSaver = ({ images = Object.values(importedImages), onClose }) => {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 9999, // ensure the screensaver overlays everything
+        zIndex: 9999, 
       }}
       onClick={handleScreenTap}
     >
-      {images.length > 0 && (
+      {slides.length > 0 && (
         <img
-          src={images[currentIndex]}
+          src={slides[currentIndex]}
           alt={`Slide ${currentIndex + 1}`}
           style={{ height: '100%', width: 'auto', objectFit: 'contain' }}
         />
