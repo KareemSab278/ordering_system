@@ -3,6 +3,8 @@ import importedImages from '../imageImporter';
 
 export { ScreenSaver };
 
+const INTERVAL = 10;
+
 const ScreenSaver = ({ images = Object.values(importedImages), onClose }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const pollRef = useRef(null);
@@ -12,7 +14,7 @@ const ScreenSaver = ({ images = Object.values(importedImages), onClose }) => {
 
     pollRef.current = setInterval(() => {
       setCurrentIndex((prev) => (prev + 1) % images.length);
-    }, 30000);
+    }, INTERVAL * 1000);
 
     return () => {
       if (pollRef.current) {

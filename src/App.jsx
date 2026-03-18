@@ -9,7 +9,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as helpers from "./AppHelpers";
 import * as hardware from "./hardwareHelpers";
-import { updateHandler } from "./updateHandler";
 import { ScreenSaver } from "./Components/ScreenSaver";
 
 export { App, CATEGORIES };
@@ -104,17 +103,6 @@ function App() {
       }
     };
 
-    const getUpdates = async () => {
-      pollRef.current = setInterval(async () => {
-        try {
-          await updateHandler();
-        } catch (e) {
-          console.error("Failed to check for updates:", e);
-        }
-      }, UPDATE_CHECK_INTERVAL);
-    };
-
-    getUpdates();
     getProductsOnMount();
     fetchEditorUrl();
     initializeStaticServer();
@@ -457,7 +445,6 @@ function App() {
     { title: "Refresh Products", onClick: () => fetchProducts() },
     { title: "Open Products Editor", onClick: () => openEditor() },
     { title: "Unlock Door", onClick: () => hardware.unlockDoor() },
-    { title: "Check for Updates", onClick: () => updateHandler() },
     { title: "Set Light Green", onClick: () => hardware.setLightsColor("green") },
     { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
     { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
