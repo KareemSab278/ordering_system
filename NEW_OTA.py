@@ -89,7 +89,6 @@ def main():
     notes = input("Release notes: ").strip() or f"Version {new} release."
     if input(f"Build v{new}? [y/N] ").lower() != 'y': sys.exit(0)
 
-    # Update files
     c = json.loads(TAURI_CONF.read_text()); c["version"] = new
     TAURI_CONF.write_text(json.dumps(c, indent=2))
     t = re.sub(r'^(version\s*=\s*")[^"]+(")', rf'\g<1>{new}\g<2>', CARGO_TOML.read_text(), count=1, flags=re.MULTILINE)
@@ -103,22 +102,32 @@ def main():
         print("  ! Signing now...")
         secrets = load_env()
         env = os.environ.copy()
-        env.update({"TAURI_SIGNING_PRIVATE_KEY": secrets["TAURI_SIGNING_PRIVATE_KEY"], "TAURI_SIGNING_PRIVATE_KEY_PASSWORD": secrets["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"]})
+        env.update({
+            "TAURI_SIGNING_PRIVATE_KEY": secrets["TAURI_SIGNING_PRIVATE_KEY"], 
+            "TAURI_SIGNING_PRIVATE_KEY_PASSWORD": secrets["TAURI_SIGNING_PRIVATE_KEY_PASSWORD"]
+        })
         subprocess.run(["npx", "tauri", "signer", "sign", str(deb)], cwd=WORKSPACE, env=env)
 
-    sig_content = get_clean_sig_content(sig_path)
+    raw_sig_content = get_clean_sig_content(sig_path)
     verify_signature(deb, load_env()["TAURI_SIGNING_PUBLIC_KEY"])
+
+    match = re.search(r"RUR[A-Za-z0-9+/=]{80,}", raw_sig_content)
+    if match:
+        json_signature = match.group(0).strip()
+    else:
+        sig_lines = [l for l in raw_sig_content.splitlines() if l.strip()]
+        json_signature = sig_lines[1] if len(sig_lines) >= 2 else raw_sig_content
 
     arch_key = "linux-x86_64" if "amd64" in deb.name else "linux-aarch64"
     OTA_DIR.mkdir(exist_ok=True)
-    shutil.move(str(deb), str(OTA_DIR / deb.name))
-    (OTA_DIR / f"{deb.name}.sig").write_text(sig_content)
-
-    sig_lines = [l for l in sig_content.splitlines() if l.strip()]
-    if len(sig_lines) >= 2:
-        json_signature = sig_lines[1]
-    else:
-        json_signature = sig_content
+    
+    final_deb_path = OTA_DIR / deb.name
+    final_sig_path = OTA_DIR / f"{deb.name}.sig"
+    
+    shutil.move(str(deb), str(final_deb_path))
+    final_sig_path.write_text(raw_sig_content)
+    
+    if sig_path.exists(): sig_path.unlink()
 
     data = {
         "version": f"v{new}",
@@ -132,8 +141,10 @@ def main():
         }
     }
     
-    UPDATES_JSON.write_text(json.dumps(data, indent=2))
+    UPDATES_JSON.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    
     print(f"\nSUCCESS: v{new} ready in OTA/ folder.")
+    print(f"Signature used in JSON: {json_signature[:20]}...")
 
 if __name__ == "__main__":
     main()
