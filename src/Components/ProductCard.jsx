@@ -1,6 +1,5 @@
 import { RemoveButton } from "./Button";
 import { QuantityBadge } from "./QuantityBadge";
-import { getProductIcon } from "../AppHelpers";
 
 export { ProductCard };
 

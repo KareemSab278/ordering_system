@@ -1,21 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Modal } from "./Components/Modal";
-import { CategoryIndicator } from "./Components/CategoryIndicator";
-import { ProductCard } from "./Components/ProductCard";
-import { PriceStatusPill } from "./Components/PriceStatusPill";
-import { PrimaryButton } from "./Components/Button";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import * as helpers from "./AppHelpers";
+import * as visuals from "./AppVisualHelpers";
 import * as hardware from "./hardwareHelpers";
 import { ScreenSaver } from "./Components/ScreenSaver";
 
-export { App, CATEGORIES };
+export { App };
 
-const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
-const INITIAL_STATE_FULLSCREEN = true;
-const SCREENSAVER_TIMEOUT_MINUTES = 0.1;
+const INITIAL_STATE_FULLSCREEN = false;
+const SCREENSAVER_TIMEOUT_MINUTES = 1;
 const FETCH_PRODUCTS_INTERVAL = 6000;
 
 
@@ -24,9 +18,7 @@ function App() {
   const [screenSaverActive, setScreenSaverActive] = useState(false);
   const [checkoutActive, setCheckoutActive] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
-  const [fullScreenState, setFullScreenState] = useState(
-    INITIAL_STATE_FULLSCREEN,
-  );
+  const [fullScreenState, setFullScreenState] = useState(INITIAL_STATE_FULLSCREEN);
 
   const [activeCategory, setActiveCategory] = useState("All");
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -150,21 +142,39 @@ function App() {
     }, FETCH_PRODUCTS_INTERVAL);
   };
 
+  const startPolling = () => {
+    pollRef.current = setInterval(async () => {
+      if (cancelledRef.current) {
+        stopPolling();
+        return;
+      }
+      try {
+        const raw = await invoke("get_pay_state");
+        const state = JSON.parse(raw);
+        const pay = state.pay;
+
+        if (pay.approved) {
+          stopPolling();
+          setPayMessage("Card approved!");
+          doDispenseAll();
+        } else if (!pay.in_progress && pay.last_error) {
+          stopPolling();
+          setPayStatus("error");
+          setPayMessage(pay.last_error || "Payment failed");
+        } else {
+          setPayMessage(pay.last_status || "Tap your contactless card…");
+        }
+      } catch (_) {
+        setPayMessage("Waiting for payment service…");
+      }
+    }, 500);
+  };
+
   const stopPolling = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-  };
-
-  const toggleFullScreen = () => {
-    const newFullScreenState = !fullScreenState;
-    setFullScreenState(newFullScreenState);
-    getCurrentWindow().setFullscreen(newFullScreenState);
-  };
-
-  const openEditor = () => {
-    openUrl(editorUrl);
   };
 
   const doDispenseAll = async () => {
@@ -219,34 +229,6 @@ function App() {
             resetCheckoutState();
           }
         }, 500);
-      }
-    }, 500);
-  };
-
-  const startPolling = () => {
-    pollRef.current = setInterval(async () => {
-      if (cancelledRef.current) {
-        stopPolling();
-        return;
-      }
-      try {
-        const raw = await invoke("get_pay_state");
-        const state = JSON.parse(raw);
-        const pay = state.pay;
-
-        if (pay.approved) {
-          stopPolling();
-          setPayMessage("Card approved!");
-          doDispenseAll();
-        } else if (!pay.in_progress && pay.last_error) {
-          stopPolling();
-          setPayStatus("error");
-          setPayMessage(pay.last_error || "Payment failed");
-        } else {
-          setPayMessage(pay.last_status || "Tap your contactless card…");
-        }
-      } catch (_) {
-        setPayMessage("Waiting for payment service…");
       }
     }, 500);
   };
@@ -322,168 +304,75 @@ function App() {
     });
   };
 
-  const filteredProducts =
-    activeCategory === "All"
-      ? products.filter((prod) => prod.product_availability)
-      : products.filter(
-        (prod) =>
-          prod.product_category === activeCategory &&
-          prod.product_availability,
-      );
-
-  const checkoutModal = (
-    <Modal
-      opened={checkoutActive}
-      title="Contactless Payment"
-      children={
-        <section style={helpers.styles.paymentSection}>
-          <div style={helpers.styles.statusIcon}>
-            {helpers.statusIcon(payStatus)}
-          </div>
-          <p style={helpers.styles.statusMessage}>{payMessage}</p>
-
-          {(payStatus === "error" || payStatus === "done") && (
-            <PrimaryButton title="Dismiss" onClick={resetCheckoutState} />
-          )}
-
-          {payStatus === "paying" && (
-            <PrimaryButton title="Cancel" onClick={handleCheckoutCancel} />
-          )}
-        </section>
-      }
-    />
-  );
-
-  const selectedProductsModal = (
-    <Modal
-      opened={modalOpen}
-      closed={() => setModalOpen(false)}
-      title="Selected Products"
-      children={
-        selectedProducts.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "2rem" }}>
-            No products selected.
-          </div>
-        ) : (
-          <section style={helpers.styles.productsSection}>
-            {selectedProducts.map((prod) => (
-              <ProductCard
-                key={prod.product_id}
-                product={prod}
-                title={`${prod.product_name} x${prod.count}`}
-                selected
-                showRemoveButton
-                onRemove={() => appendProduct(prod, "-")}
-              />
-            ))}
-            <PrimaryButton
-              title="Clear All"
-              onClick={() => setSelectedProducts([])}
-            />
-          </section>
-        )
-      }
-    />
-  );
-
-  const categoryIndocator = (
-    <div style={helpers.styles.topContainer}>
-      <section style={helpers.styles.categoryIndicatorContainer}>
-        <CategoryIndicator
-          categories={CATEGORIES}
-          activeCategory={activeCategory}
-          onCategoryClick={setActiveCategory}
-        />
-      </section>
-    </div>
-  );
-
-  const productsSection = (
-    <section style={helpers.styles.productsSection}>
-      {products.length > 0 ? (
-        filteredProducts.map((product) => {
-          const inBasket = selectedProducts.find(
-            (p) => p.product_id === product.product_id,
-          );
-
-          return (
-            <ProductCard
-              key={product.product_id}
-              product={product}
-              onClick={() => appendProduct(product, "+")}
-              selected={!!inBasket}
-              count={inBasket?.count || 0}
-              showRemoveButton={false}
-            />
-          );
-        })
-      ) : (
-        <div style={helpers.styles.noProductsMessage}>
-          No products available.
-        </div>
-      )}
-    </section>
-  );
-
-  const priceStatusPill = (
-    <PriceStatusPill
-      onModalOpen={() => setModalOpen(true)}
-      onCheckout={handleCheckout}
-      totalPrice={helpers.totalPrice(selectedProducts)}
-    />
-  );
-
-
-  const adminOptions = [
-    {
-      title: fullScreenState ? "Exit Full Screen" : "Enter Full Screen", onClick: () => {
-        toggleFullScreen();
-      }
-    },
-    { title: "Kill App (Double Click)", onClick: () => invoke("kill_app"), doubleClick: true },
-    { title: "Refresh Products", onClick: () => fetchProducts() },
-    { title: "Open Products Editor", onClick: () => openEditor() },
-    { title: "Unlock Door", onClick: () => hardware.unlockDoor() },
-    { title: "Set Light Green", onClick: () => hardware.setLightsColor("green") },
-    { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
-    { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
-  ];
-
-  const adminModal = (
-    <Modal
-      opened={adminModalOpen}
-      closed={() => setAdminModalOpen(false)}
-      title="Admin Panel"
-      innerStyle={{ maxWidth: "560px" }}
-      children={
-        <section>
-          {adminOptions.map((opt, idx) => (
-            <PrimaryButton
-              key={idx}
-              title={opt.title}
-              onClick={() => { opt.onClick(); setAdminModalOpen(false); }}
-              doubleClick={opt.doubleClick}
-            />
-          ))}
-          <p>Editor Url Active at: {editorUrl}</p>
-        </section>
-      }
-    />
-  );
+  const toggleFullScreen = () => {
+    const newFullScreenState = !fullScreenState;
+    setFullScreenState(newFullScreenState);
+    getCurrentWindow().setFullscreen(newFullScreenState);
+  };
 
   return (
-    <main style={helpers.styles.body}>
-      {categoryIndocator}
-      {productsSection}
-      {priceStatusPill}
-      {checkoutModal}
-      {selectedProductsModal}
-      {screenSaverActive && <ScreenSaver onClose={resetInactivityTimer} />}
+    <main style={visuals.styles.body}>
       <div
-        style={helpers.styles.adminTrigger}
-        onDoubleClick={() => setAdminModalOpen(true)}
+        style={visuals.styles.adminTrigger}
+        onClick={() => setAdminModalOpen(true)}
+        onDoubleClick={() => {
+          setAdminModalOpen(true);
+        }}
       />
-      {adminModal}
+
+      <visuals.AdminModal
+        opened={adminModalOpen}
+        onClose={() => setAdminModalOpen(false)}
+        onAction={(opt) => {
+          opt.onClick();
+          setAdminModalOpen(false);
+        }}
+        editorUrl={editorUrl}
+        onToggleFullScreen={toggleFullScreen}
+        fullScreenState={fullScreenState}
+      />
+
+      {!adminModalOpen && !checkoutActive && !modalOpen && <visuals.CategoryIndicatorComponent
+        activeCategory={activeCategory}
+        setActiveCategory={setActiveCategory}
+      />}
+
+      {!adminModalOpen && !checkoutActive && <visuals.ProductsSection
+        products={products}
+        appendProduct={appendProduct}
+        selectedProducts={selectedProducts}
+        activeCategory={activeCategory}
+      />}
+
+      {!adminModalOpen && !checkoutActive && <visuals.PriceStatusPillComponent
+        onModalOpen={() => {
+          setScreenSaverActive(false);
+          setModalOpen(true);
+        }}
+        onCheckout={() => {
+          setScreenSaverActive(false);
+          handleCheckout();
+        }}
+        totalPrice={helpers.totalPrice(selectedProducts)}
+      />}
+
+      <visuals.SelectedProductsModal
+        opened={modalOpen}
+        onClose={() => setModalOpen(false)}
+        selectedProducts={selectedProducts}
+        onRemove={appendProduct}
+        onClearAll={() => setSelectedProducts([])}
+      />
+
+      <visuals.CheckoutModal
+        opened={checkoutActive}
+        payMessage={payMessage}
+        payStatus={payStatus}
+        onDismiss={resetCheckoutState}
+        onCancel={handleCheckoutCancel}
+      />
+
+      {screenSaverActive && <ScreenSaver onClose={resetInactivityTimer} />}
     </main>
   );
 }

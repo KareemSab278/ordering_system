@@ -1,0 +1,246 @@
+import { Modal } from "@mantine/core";
+import { ProductCard } from "./Components/ProductCard";
+import { PrimaryButton } from "./Components/Button";
+import { PriceStatusPill } from "./Components/PriceStatusPill";
+import * as helpers from "./AppHelpers";
+import * as hardware from "./hardwareHelpers";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { CategoryIndicator } from "./Components/CategoryIndicator";
+
+export { styles, SelectedProductsModal, CheckoutModal, PriceStatusPillComponent, AdminModal, CategoryIndicatorComponent, ProductsSection };
+
+const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
+
+const SelectedProductsModal = ({ opened, onClose, selectedProducts, onRemove, onClearAll }) => (
+    <Modal
+        opened={opened}
+        onClose={onClose}
+        title="Selected Products"
+    >
+        {selectedProducts.length === 0 ? (
+            <div style={styles.noProductsMessage}>
+                No products selected.
+            </div>
+        ) : (
+            <section style={styles.productsSection}>
+                {selectedProducts.map((prod) => (
+                    <ProductCard
+                        key={prod.product_id}
+                        product={prod}
+                        title={`${prod.product_name} x${prod.count}`}
+                        selected
+                        showRemoveButton
+                        onRemove={() => onRemove(prod, "-")}
+                    />
+                ))}
+                <PrimaryButton title="Clear All" onClick={onClearAll} />
+            </section>
+        )}
+    </Modal>
+);
+
+const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel }) => (
+    <Modal opened={opened} onClose={onDismiss} title="Contactless Payment">
+        <section style={styles.paymentSection}>
+            <div style={styles.statusIcon}>{helpers.statusIcon(payStatus)}</div>
+            <p style={styles.statusMessage}>{payMessage}</p>
+
+            {(payStatus === "error" || payStatus === "done") && (
+                <PrimaryButton title="Dismiss" onClick={onDismiss} />
+            )}
+
+            {payStatus === "paying" && <PrimaryButton title="Cancel" onClick={onCancel} />}
+        </section>
+    </Modal>
+);
+
+const PriceStatusPillComponent = ({ onModalOpen, onCheckout, totalPrice }) => (
+    <PriceStatusPill
+        onModalOpen={onModalOpen}
+        onCheckout={onCheckout}
+        totalPrice={totalPrice}
+    />
+);
+
+const AdminModal = ({ opened, onClose, onAction, editorUrl, onToggleFullScreen, fullScreenState }) => {
+    const adminOptions = [
+        {
+            title: fullScreenState ? "Exit Full Screen" : "Enter Full Screen",
+            onClick: () => {
+                if (typeof onToggleFullScreen === "function") onToggleFullScreen();
+            },
+        },
+        { title: "Kill App (Double Click)", onClick: () => invoke("kill_app"), doubleClick: true },
+        { title: "Refresh Products", onClick: () => window.location.reload() },
+        { title: "Open Products Editor", onClick: () => openUrl(editorUrl) },
+        { title: "Unlock Door", onClick: () => hardware.unlockDoor() },
+        { title: "Set Light Green", onClick: () => hardware.setLightsColor("green") },
+        { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
+        { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
+    ];
+
+    return (
+        <Modal
+            opened={opened}
+            onClose={onClose}
+            title="Admin Panel"
+        >
+            <section>
+                {adminOptions.map((opt, idx) => (
+                    <PrimaryButton
+                        key={idx}
+                        title={opt.title}
+                        onClick={() => onAction(opt)}
+                        doubleClick={opt.doubleClick}
+                    />
+                ))}
+                <p>Editor Url Active at: {editorUrl}</p>
+            </section>
+        </Modal>
+    );
+};
+
+
+
+
+const CategoryIndicatorComponent = ({ activeCategory, setActiveCategory }) => (
+    <div style={styles.topContainer}>
+        <section style={styles.categoryIndicatorContainer}>
+            <CategoryIndicator
+                categories={CATEGORIES}
+                activeCategory={activeCategory}
+                onCategoryClick={setActiveCategory}
+            />
+        </section>
+    </div>
+);
+
+const ProductsSection = ({ products, appendProduct, selectedProducts, activeCategory }) => {
+    const filteredProducts =
+        activeCategory === "All"
+            ? products.filter((prod) => prod.product_availability)
+            : products.filter(
+                (prod) =>
+                    prod.product_category === activeCategory &&
+                    prod.product_availability,
+            );
+    return (
+        <section style={styles.productsSection}>
+            {products.length > 0 ? (
+                filteredProducts.map((product) => {
+                    const inBasket = selectedProducts.find(
+                        (p) => p.product_id === product.product_id,
+                    );
+
+                    return (
+                        <ProductCard
+                            key={product.product_id}
+                            product={product}
+                            onClick={() => appendProduct(product, "+")}
+                            selected={!!inBasket}
+                            count={inBasket?.count || 0}
+                            showRemoveButton={false}
+                        />
+                    );
+                })
+            ) : (
+                <div style={styles.noProductsMessage}>
+                    No products available.
+                </div>
+            )}
+        </section>
+    );
+};
+
+const styles = {
+  body: {
+    background: "#1b2136",
+    color: "#fff",
+    fontFamily:
+      'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+    minHeight: "100vh",
+    padding: 0,
+    margin: 0,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    paddingTop: "7rem",
+  },
+  topContainer: {
+    position: "fixed",
+    top: 0,
+    left: "50%",
+    transform: "translateX(-50%)",
+    zIndex: 1100,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "#181A20",
+    boxShadow: "0px 2px 15px rgba(0, 0, 0, 0.52)",
+    borderRadius: "50px",
+    padding: "0.5rem 0.5rem",
+    marginTop: "1rem",
+    maxWidth: "90%",
+  },
+  header: {
+    width: "100%",
+    textAlign: "center",
+    margin: 0,
+  },
+  categoryIndicatorContainer: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    margin: 0,
+    overflowX: "auto",
+  },
+  noProductsMessage: {
+    textAlign: "center",
+    color: "#d4d4d4",
+    fontSize: "1.2rem",
+    marginTop: "2rem",
+  },
+  productsSection: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "1rem",
+    justifyContent: "center",
+    alignItems: "center",
+    width: "100%",
+    maxWidth: "900px",
+    margin: "0 auto 2rem auto",
+    marginTop: "1rem",
+    marginBottom: "8rem",
+  },
+  paymentSection: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: "1.2rem",
+    padding: "0.5rem 0 1rem",
+  },
+  adminTrigger: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: 60,
+    height: 60,
+    zIndex: 9999,
+    opacity: 0,
+    backgroundColor: "rgba(255, 0, 0, 0.5)",
+  },
+  statusIcon: {
+    fontSize: "3.5rem",
+    lineHeight: 1,
+  },
+  statusMessage: {
+    textAlign: "center",
+    color: "#d4d4d4",
+    margin: 0,
+    fontSize: "0.95rem",
+    minHeight: "1.4rem",
+    maxWidth: "280px",
+  },
+};

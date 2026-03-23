@@ -35,15 +35,14 @@ const PrimaryButton = ({ title, onClick, color = 'rgb(99, 99, 99)', onDoubleClic
 
 const RemoveButton = ({ onClick }) => {
   return (
-    <section style={styles.removeBtnSection}>
+    <section >
       <Button
         variant="outline"
         size="lg"
         radius="xl"
-        style={styles.removeBtn}
         onClick={onClick}
       >
-        <IconX size={20} stroke={2} />
+        <IconX size={20} stroke={5} color="red"/>
       </Button>
     </section>
   );
@@ -78,7 +77,7 @@ const styles = {
   tabActive: {
     backgroundColor: "rgba(255, 255, 255, 0.29)",
     color: "#fff",
-    padding: "4px 8px",
+    padding: "8px 8px",
     fontWeight: "bold",
     fontSize: "1rem",
     boxShadow: "0 2px 8px rgba(0, 0, 0, 0.50)",
@@ -87,16 +86,4 @@ const styles = {
     cursor: "pointer",
     transition: "background 0.2s, box-shadow 0.2s",
   },
-  removeBtn: {
-    backgroundColor: "rgba(0, 0, 0, 0.54)",
-    color: "#fff",
-    padding: "5px 10px",
-    fontWeight: "bold",
-    fontSize: "1.2rem",
-    border: "none",
-    borderRadius: "50px",
-    cursor: "pointer",
-    marginTop: -50,
-  },
-  removeBtnSection: { display: "inline-block", margin: "8px" },
 };
