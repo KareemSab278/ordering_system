@@ -3,7 +3,7 @@ use std::thread;
 use std::time::Duration;
 use tauri::Emitter;
 
-const PIR_PIN: u8 = 26;
+const PIR_PIN: u8 = 7;
 
 pub fn start_motion_listener(app_handle: tauri::AppHandle) {
     thread::spawn(move || {
@@ -32,7 +32,6 @@ pub fn start_motion_listener(app_handle: tauri::AppHandle) {
         loop {
             let is_high = pin.is_high();
 
-            // Only fire on rising edge (low -> high)
             if is_high && !last_state {
                 println!("Motion detected!");
                 if let Err(e) = app_handle.emit("motion-detected", true) {
