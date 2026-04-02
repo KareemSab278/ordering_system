@@ -95,19 +95,6 @@ function App() {
     }
   };
 
-  const isMotionSensorWorking = async () => {
-    try {
-      const working = await hardware.isMotionSensorWorking();
-      if (!working) {
-        setMotionSensorFailed(true);
-      }
-    }
-    catch (e) {
-      console.error("Failed to check motion sensor status:", e);
-      setMotionSensorFailed(true);
-    }
-  };
-
   useEffect(() => {
     getProductsOnMount();
     fetchEditorUrl();
@@ -115,7 +102,6 @@ function App() {
     fetchProducts();
     initializePaymentServer();
     startInactivityTimer();
-    setTimeout(() => isMotionSensorWorking(), 2500);
 
     const handleUserActivity = () => {
       resetInactivityTimer();
@@ -387,11 +373,6 @@ function App() {
         }}
         totalPrice={helpers.totalPrice(selectedProducts)}
       />}
-
-      <visuals.MotionSensorStatusModal
-        opened={motionSensorFailed}
-        onClose={() => setMotionSensorFailed(false)}
-      />
 
       <visuals.SelectedProductsModal
         opened={modalOpen}

@@ -12,7 +12,7 @@ import { IconCircleX } from "@tabler/icons-react";
 export {
     styles, SelectedProductsModal, CheckoutModal,
     PriceStatusPillComponent, AdminModal,
-    CategoryIndicatorComponent, ProductsSection, MotionSensorStatusModal
+    CategoryIndicatorComponent, ProductsSection
 };
 
 const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
@@ -102,8 +102,6 @@ const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel }: C
     </Modal>
 );
 
-
-
 const PriceStatusPillComponent = ({ onModalOpen, onCheckout, totalPrice }: PriceStatusPillProps) => (
     <PriceStatusPill
         onModalOpen={onModalOpen}
@@ -111,21 +109,6 @@ const PriceStatusPillComponent = ({ onModalOpen, onCheckout, totalPrice }: Price
         totalPrice={totalPrice}
     />
 );
-
-const MotionSensorStatusModal = ({ opened, onClose }: MotionSensorStatusModalProps) => (
-    <Modal opened={opened} onClose={onClose}>
-        <section style={styles.paymentSection}>
-            <div style={styles.statusIcon}>{<IconCircleX />}</div>
-            <p style={styles.statusMessage}>
-                <h2>Motion Sensor Not Responding...</h2>
-                <h4>Have you checked the wiring and pin configuration?</h4>
-                <i>(App will continue working like normal but motion detection features may be limited)</i>
-            </p>
-            <PrimaryButton title="Close" onClick={onClose} />
-        </section>
-    </Modal>
-);
-
 
 const AdminModal = ({ opened, onClose, onAction, editorUrl, onToggleFullScreen, fullScreenState }: AdminModalProps) => {
     const adminOptions = [
