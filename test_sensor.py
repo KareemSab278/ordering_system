@@ -14,6 +14,9 @@ print(f"PIR motion sensor test started on pin {PIR_PIN} (mode={GPIO.getmode()})"
 print("Press Ctrl+C to exit")
 
 try:
+    if GPIO.input(PIR_PIN) is None:
+        print("Error: PIR sensor not detected. Check wiring and pin number.")
+        raise SystemExit(1)
     while True:
         motion = GPIO.input(PIR_PIN)
         if motion:
