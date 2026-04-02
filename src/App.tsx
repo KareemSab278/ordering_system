@@ -13,14 +13,12 @@ const INITIAL_STATE_FULLSCREEN: boolean = true;
 const SCREENSAVER_TIMEOUT_MINUTES: number = 1;
 const FETCH_PRODUCTS_INTERVAL: number = 6000;
 
-
 function App() {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [screenSaverActive, setScreenSaverActive] = useState<boolean>(false);
   const [checkoutActive, setCheckoutActive] = useState<boolean>(false);
   const [adminModalOpen, setAdminModalOpen] = useState<boolean>(false);
   const [fullScreenState, setFullScreenState] = useState<boolean>(INITIAL_STATE_FULLSCREEN);
-  const [motionSensorFailed, setMotionSensorFailed] = useState<boolean>(false);
 
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
@@ -96,6 +94,7 @@ function App() {
   };
 
   useEffect(() => {
+    listenToMotionSensor();
     getProductsOnMount();
     fetchEditorUrl();
     initializeStaticServer();
@@ -123,8 +122,6 @@ function App() {
       if (unlistenMotionRef.current) unlistenMotionRef.current();
     };
   }, []);
-
-  useTimeout(() => listenToMotionSensor(), 2000);
 
   useEffect(() => {
     if (checkoutActive) {
@@ -327,7 +324,7 @@ function App() {
     getCurrentWindow().setFullscreen(newFullScreenState);
   };
 
-  const hideVisual = !adminModalOpen && !checkoutActive && !motionSensorFailed;
+  const hideVisual = !adminModalOpen && !checkoutActive;
 
   return (
     <main style={visuals.styles.body}>
