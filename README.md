@@ -1,6 +1,6 @@
 # Coinadrink Ordering System
 
-A contactless card payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic and hardware communication).
+A contactless card payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic and hardware communication). Includes Raspberry Pi GPIO-based PIR motion sensing for screen wake/inactivity and an MFRC522 NFC reader for admin authentication.
 
 ---
 
@@ -1170,6 +1170,14 @@ python3 test_sensor.py
 
 Also check `src-tauri/src/motion_sensor.rs` for the Tauri-side listener if you need to match the pin used by the Rust bridge.
 
+### NFC Reader (MFRC522) (Wiring & Notes)
+
+- The NFC reader is connected via SPI to the Raspberry Pi and uses `/dev/spidev0.0` in the Rust listener.
+- The MFRC522 module is read by `src-tauri/src/nfc.rs` and emits `nfc-admin-found` for allowlisted tags or `nfc-unknown-tag` for any other tag.
+- Admin tags are currently hard-coded in `src-tauri/src/nfc.rs` and mapped to the admin access path used by the frontend.
+- If an admin tag is recognised, the app opens the admin modal and resets the screen saver state.
+- If an unknown tag is detected, the frontend shows a short notification instead of granting access.
+- Confirm the SPI wiring, power rails, and ground connections before powering the reader.
 
 ### Flask Cannot Connect to Serial Port
 
