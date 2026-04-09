@@ -87,34 +87,34 @@ const SelectedProductsModal = ({ opened, onClose, selectedProducts, onRemove, on
     </Modal>
 );
 
-const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel, paymentType }: CheckoutModalProps) => (
-    <Modal opened={opened} onClose={onDismiss} title={`${paymentType === "card" ? "Card" : "NFC"} Contactless Payment`}>
-        <section style={styles.paymentSection}>
+const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel, paymentType }: CheckoutModalProps) => {
+    const blockClose = payStatus === "waiting_door";
 
-            <div style={styles.statusIcon}>{paymentType !== "nfc" ? helpers.statusIcon(payStatus) : helpers.statusIcon("nfc")}</div>
+    return (
+        <Modal
+            opened={opened}
+            onClose={blockClose ? () => {} : onDismiss}
+            title={`${paymentType === "card" ? "Card" : "NFC"} Contactless Payment`}
+            withCloseButton={!blockClose}
+            closeOnClickOutside={!blockClose}
+            closeOnEscape={!blockClose}
+        >
+            <section style={styles.paymentSection}>
+                <div style={styles.statusIcon}>
+                    {paymentType !== "nfc" ? helpers.statusIcon(payStatus) : helpers.statusIcon("nfc")}
+                </div>
 
-            {paymentType === "card" &&
-                <>
-                    <p style={styles.statusMessage}>{payMessage}</p>
-                    {(payStatus === "error" || payStatus === "done") && (
-                        <PrimaryButton title="Dismiss" onClick={onDismiss} />
-                    )}
-                </>
-            }
+                <p style={styles.statusMessage}>{payMessage}</p>
 
-            {paymentType === "nfc" &&
-                <>
-                    <p style={styles.statusMessage}>{payMessage}</p>
-                    {(payStatus === "error" || payStatus === "done") && (
-                        <PrimaryButton title="Dismiss" onClick={onDismiss} />
-                    )}
-                </>
-            }
+                {(payStatus === "error" || payStatus === "done") && (
+                    <PrimaryButton title="Dismiss" onClick={onDismiss} />
+                )}
 
-            {payStatus === "paying" && <PrimaryButton title="Cancel" onClick={onCancel} />}
-        </section>
-    </Modal>
-);
+                {payStatus === "paying" && <PrimaryButton title="Cancel" onClick={onCancel} />}
+            </section>
+        </Modal>
+    );
+};
 
 const PriceStatusPillComponent = ({ onModalOpen, onCheckout, totalPrice }: PriceStatusPillProps) => (
     <PriceStatusPill

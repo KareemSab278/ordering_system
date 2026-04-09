@@ -47,16 +47,37 @@ function App() {
     setPayMessage("Please tap your NFC tag to pay…");
 
     hardware.listenToNFCPayment(helpers.totalPrice(selectedProducts), (newBalance) => {
-      setPayStatus("done");
-      setPayMessage(`Payment successful.\nRemaining balance: ${newBalance}`);
+      setPayStatus("dispensing");
+      setPayMessage(`Payment successful.\nRemaining balance: £${parseFloat(Number(newBalance).toFixed(2))}`);
       hardware.unlockDoor();
+
+      setPayStatus("waiting_door");
+      setPayMessage("Please take your items and close the door.");
+      const doorPollInterval = setInterval(async () => {
+        if (cancelledRef.current) {
+          clearInterval(doorPollInterval);
+          return;
+        }
+        const closed = await hardware.isDoorClosed();
+        if (closed) {
+          clearInterval(doorPollInterval);
+          setPayStatus("done");
+          setPayMessage("Thank you! Please come again.");
+          setModalOpen(false);
+          setAdminModalOpen(false);
+
+          setTimeout(() => {
+            if (!cancelledRef.current) {
+              resetCheckoutState();
+            }
+          }, 500);
+        }
+      }, 500);
+
       setAdminModalOpen(false);
-      setTimeout(() => setCheckoutActive(false), 4000); // close modal after showing success message for 4 seconds
     }, (error) => {
       setPayStatus("error");
-      // setPayMessage(`Payment failed: ${error.message}`);
       setPayMessage(`Payment failed: ${error?.message ?? String(error) ?? "Unknown error"}`);
-      console.error("NFC payment error object:", error);
       setAdminModalOpen(false);
     });
 
@@ -251,7 +272,6 @@ function App() {
     }
 
     hardware.unlockDoor();
-    hardware.setLightsColor("green");
 
     for (const p of selectedProducts) {
       try {
