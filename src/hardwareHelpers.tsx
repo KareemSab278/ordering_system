@@ -94,11 +94,12 @@ const listenToNFCPayment = async (
     const tag_id = (await invoke("get_tag_id")) as string;
     if (!tag_id) throw new Error("No tag detected");
 
-    const balance = (await invoke("get_balance_by_tag_id", { tag_id })) as number | null;
+    // must be tagId for tag_id in rust tauri backend because it is encforced to be camelcase in js and snake case in rust under tauri.
+    const balance = (await invoke("get_balance_by_tag_id", { tagId: tag_id })) as number | null;
     if (balance === null) throw new Error("Tag not recognised");
     if (balance < amount) throw new Error("Insufficient balance");
 
-    const newBalance = (await invoke("update_balance_by_tag_id", { tag_id, amount })) as number;
+    const newBalance = (await invoke("update_balance_by_tag_id", { tagId: tag_id, amount })) as number;
     onSuccess(newBalance);
   } catch (error) {
     console.error("NFC payment failed:", error);
