@@ -48,29 +48,28 @@ function App() {
 
     hardware.listenToNFCPayment(helpers.totalPrice(selectedProducts), (newBalance) => {
       setPayStatus("dispensing");
-      setPayMessage(`Payment successful.\nRemaining balance: £${parseFloat(Number(newBalance).toFixed(2))}`);
       hardware.unlockDoor();
 
       setPayStatus("waiting_door");
       setPayMessage("Please take your items and close the door.");
+      
       const doorPollInterval = setInterval(async () => {
         if (cancelledRef.current) {
           clearInterval(doorPollInterval);
           return;
         }
-        const closed = await hardware.isDoorClosed();
+        const closed = await hardware.isDoorClosed(); // remember here: sometimes the door is closed and when you open it shows closed immediately. its just a lock hardware glitch
         if (closed) {
           clearInterval(doorPollInterval);
           setPayStatus("done");
-          setPayMessage("Thank you! Please come again.");
-          setModalOpen(false);
+          setPayMessage(`Payment successful.\nRemaining balance: £${parseFloat(Number(newBalance).toFixed(2))}`);
           setAdminModalOpen(false);
 
           setTimeout(() => {
             if (!cancelledRef.current) {
               resetCheckoutState();
             }
-          }, 500);
+          }, 5000);
         }
       }, 500);
 
@@ -296,7 +295,6 @@ function App() {
         clearInterval(doorPollInterval);
         setPayStatus("done");
         setPayMessage("Thank you! Please come again.");
-        setModalOpen(false);
         setAdminModalOpen(false);
 
         setTimeout(() => {
