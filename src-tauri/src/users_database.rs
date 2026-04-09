@@ -14,7 +14,6 @@ fn user_db_path() -> PathBuf {
     dir.join(USER_DATA_FILE)
 }
 
-
 pub fn initialize_user_database() -> Result<()> {
     let conn = Connection::open(user_db_path())?;
     conn.execute_batch(
@@ -52,10 +51,11 @@ pub fn new_user(tag_id: &str, full_name: &str, is_admin: bool, balance: f64) -> 
     Ok(())
 }
 
-
 pub fn search_users_by_name(name: &str) -> Result<Vec<User>> {
     let conn = open_user_db()?;
-    let mut stmt = conn.prepare("SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE full_name LIKE ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE full_name LIKE ?1",
+    )?;
     let user_iter = stmt.query_map(params![format!("%{}%", name)], |row| {
         Ok(User {
             user_id: row.get(0)?,
@@ -75,7 +75,9 @@ pub fn search_users_by_name(name: &str) -> Result<Vec<User>> {
 
 pub fn get_user_by_tag_id(tag_id: &str) -> Result<Option<User>> {
     let conn = open_user_db()?;
-    let mut stmt = conn.prepare("SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE tag_id = ?1")?;
+    let mut stmt = conn.prepare(
+        "SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE tag_id = ?1",
+    )?;
     let user_iter = stmt.query_map(params![tag_id], |row| {
         Ok(User {
             user_id: row.get(0)?,
@@ -103,16 +105,36 @@ pub fn get_balance_by_tag_id(tag_id: &str) -> Result<Option<f64>> {
     Ok(None)
 }
 
-pub fn update_balance_by_tag_id(tag_id: &str, new_balance: f64) -> Result<()> {
-    let conn = open_user_db()?;
-    conn.execute(
-        "UPDATE users SET balance = ?1 WHERE tag_id = ?2",
-        params![new_balance, tag_id],
-    )?;
-    Ok(())
+pub fn update_balance_by_tag_id(tag_id: &str, amount: f64) -> std::result::Result<f64, String> {
+    let conn = open_user_db().map_err(|e| e.to_string())?;
+    let current_balance: f64 = conn
+        .query_row(
+            "SELECT balance FROM users WHERE tag_id = ?1",
+            params![tag_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let new_balance = current_balance - amount;
+
+    if new_balance < 0.0 {
+        Err(format!("Insufficient balance: {}", current_balance))
+    } else {
+        conn.execute(
+            "UPDATE users SET balance = ?1 WHERE tag_id = ?2",
+            params![new_balance, tag_id],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(new_balance)
+    }
 }
 
-pub fn update_user_by_tag_id(tag_id: &str, full_name: &str, is_admin: bool, balance: f64) -> Result<()> {
+pub fn update_user_by_tag_id(
+    tag_id: &str,
+    full_name: &str,
+    is_admin: bool,
+    balance: f64,
+) -> Result<()> {
     let conn = open_user_db()?;
     conn.execute(
         "UPDATE users SET full_name = ?1, is_admin = ?2, balance = ?3 WHERE tag_id = ?4",

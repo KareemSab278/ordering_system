@@ -1,8 +1,8 @@
 use axum::{
-    extract::{path, Path, Query},
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
-    routing::{delete, get, post, put},
+    routing::{delete, get, post},
     Json, Router,
 };
 use serde::Deserialize;
@@ -97,6 +97,7 @@ async fn get_user_by_tag_id(Query(params): Query<TagQuery>) -> impl IntoResponse
     }
 }
 
+// this really is more of a lib.rs tauri fn but added here just in case
 async fn get_balance_by_tag_id(Query(params): Query<TagQuery>) -> impl IntoResponse {
     if let Some(tag_id) = params.tag_id {
         println!("GET /balance?tag_id={}", tag_id);
@@ -169,23 +170,14 @@ struct SearchName {
     name: Option<String>,
 }
 
-async fn search_users_by_name(Query(params): Query<SearchName>) -> impl IntoResponse {
-    if let Some(name) = params.name {
-        println!("GET /users?name={}", name);
-        match users_database::search_users_by_name(&name) {
-            Ok(users) => (StatusCode::OK, Json(users)).into_response(),
-            Err(e) => {
-                eprintln!("GET /users?name={} error: {}", name, e);
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("error: {}", e)).into_response()
-            }
+async fn search_users_by_name(Path(name): Path<String>) -> impl IntoResponse {
+    println!("GET /users/name/{}", name);
+    match users_database::search_users_by_name(&name) {
+        Ok(users) => (StatusCode::OK, Json(users)).into_response(),
+        Err(e) => {
+            eprintln!("GET /users/name/{} error: {}", name, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, format!("error: {}", e)).into_response()
         }
-    } else {
-        println!("GET /users with no name");
-        (
-            StatusCode::BAD_REQUEST,
-            "Missing name query parameter".to_string(),
-        )
-            .into_response()
     }
 }
 
@@ -306,6 +298,7 @@ pub async fn start() {
                 .delete(delete_user_by_tag_id),
         )
         .route("/users", get(get_user_by_tag_id))
+        .route("/users/name/:name", get(search_users_by_name))
         .route(
             "/balance",
             get(get_balance_by_tag_id).put(update_balance_by_tag_id),

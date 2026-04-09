@@ -43,6 +43,31 @@ async fn initialize_database() -> Result<(), String> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
+async fn initialize_user_database() -> Result<(), String> {
+    users_database::initialize_user_database()
+        .map_err(|e| format!("User database initialization failed: {}", e))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_balance_by_tag_id(tag_id: String) -> Result<Option<f64>, String> { // success return f64 else string err
+    users_database::get_balance_by_tag_id(&tag_id)
+        .map_err(|e| format!("Failed to get balance: {}", e))
+        .map(|balance| balance)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn update_balance_by_tag_id(tag_id: String, amount: f64) -> Result<f64, String> { // success return new balance else string err
+    users_database::update_balance_by_tag_id(&tag_id, amount)
+        .map_err(|e| format!("Failed to update balance: {}", e))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
 async fn return_editor_url() -> String {
     server::return_editor_url()
 }
@@ -264,8 +289,11 @@ pub fn run() {
             terminate_payment,
             // DB related commands
             initialize_database,
+            initialize_user_database,
             insert_order,
             query_products,
+            get_balance_by_tag_id,
+            update_balance_by_tag_id,
             // Product management
             delete_product,
             new_product,
@@ -283,8 +311,8 @@ pub fn run() {
                 .handle()
                 .plugin(tauri_plugin_updater::Builder::new().build());
 
-                motion_sensor::start_motion_listener(app.handle().clone());
-                nfc::start_nfc_listener(app.handle().clone());
+            motion_sensor::start_motion_listener(app.handle().clone());
+            nfc::start_nfc_listener(app.handle().clone());
 
             Ok(())
         })
