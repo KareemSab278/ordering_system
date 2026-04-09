@@ -46,6 +46,8 @@ function App() {
     setPaymentMethod("nfc");
     setPayStatus("paying");
     setPayMessage("Please tap your NFC tag to pay…");
+    // wait for NFC event to confirm payment, which will be handled in the NFC listener and trigger the same flow as card payment on success.
+    
     setCheckoutActive(true);
     setScreenSaverActive(false);
   };

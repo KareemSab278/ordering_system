@@ -91,12 +91,11 @@ const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel, pay
     <Modal opened={opened} onClose={onDismiss} title={`${paymentType === "card" ? "Card" : "NFC"} Contactless Payment`}>
         <section style={styles.paymentSection}>
 
+            <div style={styles.statusIcon}>{paymentType !== "nfc" ? helpers.statusIcon(payStatus) : helpers.statusIcon("nfc")}</div>
+
             {paymentType === "card" &&
                 <>
-
-                    <div style={styles.statusIcon}>{helpers.statusIcon(payStatus)}</div>
                     <p style={styles.statusMessage}>{payMessage}</p>
-
                     {(payStatus === "error" || payStatus === "done") && (
                         <PrimaryButton title="Dismiss" onClick={onDismiss} />
                     )}
@@ -105,9 +104,7 @@ const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel, pay
 
             {paymentType === "nfc" &&
                 <>
-                    <div style={styles.statusIcon}>{helpers.statusIcon(paymentType)}</div>
                     <p style={styles.statusMessage}>{payMessage}</p>
-
                     {(payStatus === "error" || payStatus === "done") && (
                         <PrimaryButton title="Dismiss" onClick={onDismiss} />
                     )}

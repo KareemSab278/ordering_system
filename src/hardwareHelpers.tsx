@@ -83,3 +83,7 @@ const listenToNfcUnknownTag = async (onUnknown: () => void) => {
   });
   return unlisten;
 };
+
+const listenToNFCPayment = () => {
+  // should first check if has balance then if has balance and can make payment then return true else false frpm this fn
+}
