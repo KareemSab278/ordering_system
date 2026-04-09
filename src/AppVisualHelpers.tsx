@@ -326,7 +326,7 @@ const styles: { [key: string]: React.CSSProperties } = {
         bottom: "2rem",
         left: "50%",
         transform: "translateX(-50%)",
-        backgroundColor: "#c03a2bb9",
+        backgroundColor: "#c03a2b",
         color: "#fff",
         padding: "0.5rem 1.5rem",
         borderRadius: "0.5rem",

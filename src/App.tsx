@@ -9,7 +9,7 @@ import { ScreenSaver } from "./Components/ScreenSaver";
 export { App };
 
 const INITIAL_STATE_FULLSCREEN: boolean = true;
-const SCREENSAVER_TIMEOUT_MINUTES: number = 0.1;
+const SCREENSAVER_TIMEOUT_MINUTES: number = 1; // uno minuto
 const FETCH_PRODUCTS_INTERVAL: number = 6000;
 const NFC_ONLY_MODE: boolean = false; // set to true to disable the corner admin trigger and rely solely on NFC for admin access
 
@@ -45,16 +45,17 @@ function App() {
     setPaymentMethod("nfc");
     setPayStatus("paying");
     setPayMessage("Please tap your NFC tag to pay…");
-    // wait for NFC event to confirm payment, which will be handled in the NFC listener and trigger the same flow as card payment on success.
 
     hardware.listenToNFCPayment(helpers.totalPrice(selectedProducts), (newBalance) => {
-      console.log(`Payment successful. New balance: ${newBalance}`);
       setPayStatus("done");
       setPayMessage(`Payment successful.\nRemaining balance: ${newBalance}`);
+      setAdminModalOpen(false);
     }, (error) => {
-      console.error("Payment failed:", error);
       setPayStatus("error");
-      setPayMessage(`Payment failed: ${error.message}`);
+      // setPayMessage(`Payment failed: ${error.message}`);
+      setPayMessage(`Payment failed: ${error?.message ?? String(error) ?? "Unknown error"}`);
+      console.error("NFC payment error object:", error);
+      setAdminModalOpen(false);
     });
 
     setCheckoutActive(true);
@@ -453,7 +454,7 @@ function App() {
       />
 
       {screenSaverActive && <ScreenSaver onClose={resetInactivityTimer} />}
-      
+
       {nfcNotification && <visuals.NFCNotification NFCNotification={nfcNotification} />}
     </main>
   );
