@@ -115,19 +115,21 @@ pub fn start_nfc_listener(app_handle: tauri::AppHandle) {
                     match users_database::get_user_by_tag_id(&uid_hex) {
                         Ok(Some(user)) if user.is_admin => {
                             println!("nfc-admin-found");
-                            if let Err(e) = app_handle.emit("nfc-admin-found", user.user_id.to_string()) {
+                            if let Err(e) =
+                                app_handle.emit("nfc-admin-found", user.user_id.to_string())
+                            {
                                 eprintln!("Failed to emit nfc-admin-found: {e}");
                             }
                         }
                         Ok(Some(_)) => {
                             println!("nfc-unknown-tag");
-                            if let Err(e) = app_handle.emit("nfc-unknown-tag", true) {
+                            if let Err(e) = app_handle.emit("nfc-unknown-tag", uid_hex.clone()) {
                                 eprintln!("Failed to emit nfc-unknown-tag: {e}");
                             }
                         }
                         Ok(None) | Err(_) => {
                             println!("nfc-unknown-tag");
-                            if let Err(e) = app_handle.emit("nfc-unknown-tag", true) {
+                            if let Err(e) = app_handle.emit("nfc-unknown-tag", uid_hex.clone()) {
                                 eprintln!("Failed to emit nfc-unknown-tag: {e}");
                             }
                         }
@@ -137,11 +139,88 @@ pub fn start_nfc_listener(app_handle: tauri::AppHandle) {
                     continue;
                 }
             }
-
             delay.delay_ms(SCAN_DELAY_MS);
         }
     });
 }
+
+
+pub fn listen_for_tag_ids() -> Result<String, String> {
+    if std::env::consts::OS != "linux" {
+        println!(
+            "\nLINUX OS REQUIRED.\nDETECTED: {}.\nNFC listener not started.\n",
+            std::env::consts::OS
+        );
+        return Err("NFC listener not started due to unsupported OS".to_string());
+    }
+
+    let options = SpidevOptions::new()
+        .max_speed_hz(1_000_000)
+        .mode(SpiModeFlags::SPI_MODE_0)
+        .build();
+
+    let mut spi = loop {
+        match get_spi() {
+            Ok(s) => break s,
+            Err(_) => {
+                println!("Retrying SPI device in 3 seconds…");
+                thread::sleep(Duration::from_secs(3));
+            }
+        }
+    };
+
+    if let Err(e) = spi.configure(&options) {
+        eprintln!("Failed to configure SPI device: {:?}", e);
+        return Err("Failed to configure SPI device".to_string());
+    }
+
+    let itf = SpiInterface::new(spi);
+    let mut mfrc522 = match Mfrc522::new(itf).init() {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Failed to initialise MFRC522: {:?}", e);
+            return Err("Failed to initialise MFRC522".to_string());
+        }
+    };
+
+    let vers = match mfrc522.version() {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("Failed to read MFRC522 version: {:?}", e);
+            return Err("Failed to read MFRC522 version".to_string());
+        }
+    };
+
+    match vers {
+        0x91 | 0x92 => println!("MFRC522 Version 1 (0x{vers:x}) — NFC listener starting…"),
+        0x90 => println!("MFRC522 Version 2 (0x{vers:x}) — NFC listener starting…"),
+        0x82 => println!("Older MFRC522 (0x{vers:x}) — NFC listener starting…"),
+        _ => {
+            eprintln!("Unknown MFRC522 version 0x{vers:x} — NFC listener not started.");
+            return Err("Unknown MFRC522 version".to_string());
+        }
+    }
+
+    let mut delay = Delay;
+
+    loop {
+        if let Ok(atqa) = mfrc522.reqa() {
+            if let Ok(uid) = mfrc522.select(&atqa) {
+                let uid_hex = uid
+                    .as_bytes()
+                    .iter()
+                    .map(|hex| format!("{:02x}", hex))
+                    .collect::<String>();
+
+                println!("SCANNED UID: {}", &uid_hex);
+                return Ok(uid_hex);
+            }
+        }
+        delay.delay_ms(SCAN_DELAY_MS);
+    }
+}
+
+
 
 #[allow(dead_code)]
 fn handle_authenticate<E, COMM: Interface<Error = E>, F>(

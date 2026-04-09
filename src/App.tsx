@@ -5,7 +5,6 @@ import * as helpers from "./AppHelpers";
 import * as visuals from "./AppVisualHelpers";
 import * as hardware from "./hardwareHelpers";
 import { ScreenSaver } from "./Components/ScreenSaver";
-import { useTimeout } from "@mantine/hooks";
 
 export { App };
 
@@ -47,9 +46,20 @@ function App() {
     setPayStatus("paying");
     setPayMessage("Please tap your NFC tag to pay…");
     // wait for NFC event to confirm payment, which will be handled in the NFC listener and trigger the same flow as card payment on success.
-    
+
+    hardware.listenToNFCPayment(helpers.totalPrice(selectedProducts), (newBalance) => {
+      console.log(`Payment successful. New balance: ${newBalance}`);
+      setPayStatus("done");
+      setPayMessage(`Payment successful.\nRemaining balance: ${newBalance}`);
+    }, (error) => {
+      console.error("Payment failed:", error);
+      setPayStatus("error");
+      setPayMessage(`Payment failed: ${error.message}`);
+    });
+
     setCheckoutActive(true);
     setScreenSaverActive(false);
+    setAdminModalOpen(false);
   };
 
   const clearInactivityTimer = () => {
@@ -89,13 +99,12 @@ function App() {
     }, 3000) as unknown as number;
   };
 
-  const listenToNfc = async () => { // need to change this to check if user is admin or not.
+  const listenToNfc = async () => {
     unlistenNfcAdminRef.current = await hardware.listenToNfcAdminFound(() => {
       !modalOpen && !checkoutActive && (setAdminModalOpen(true), setScreenSaverActive(false)); // only show admin if nothing else open.
-
     });
-    unlistenNfcUnknownRef.current = await hardware.listenToNfcUnknownTag(() => {
-      showNfcNotification("NFC tag not recognised");
+    unlistenNfcUnknownRef.current = await hardware.listenToNfcUnknownTag((tagId) => {
+      showNfcNotification(`Unknown NFC tag: ${tagId}`);
     });
   };
 
@@ -265,6 +274,7 @@ function App() {
         setPayStatus("done");
         setPayMessage("Thank you! Please come again.");
         setModalOpen(false);
+        setAdminModalOpen(false);
 
         setTimeout(() => {
           if (!cancelledRef.current) {
@@ -306,6 +316,7 @@ function App() {
       setPayStatus("error");
       setPayMessage(`Could not reach payment service: ${e}`);
     }
+    setAdminModalOpen(false);
   };
 
   const handleCardCheckoutCancel = async () => {
@@ -315,6 +326,7 @@ function App() {
     setPayStatus("idle");
     setPayMessage("");
     await invoke("terminate_payment");
+    setAdminModalOpen(false);
   };
 
   const resetCheckoutState = () => {
@@ -368,7 +380,7 @@ function App() {
   };
 
   const hideVisual = !adminModalOpen && !checkoutActive && !modalOpen && !paymentMethodModalOpen;
-
+  const hideAdminModal = ((payStatus === "paying" || payStatus === "dispensing" || payStatus === "waiting_door") || checkoutActive || paymentMethodModalOpen);
   return (
     <main style={visuals.styles.body}>
       {!NFC_ONLY_MODE && <div
@@ -378,7 +390,7 @@ function App() {
         }}
       />}
 
-      <visuals.AdminModal
+      {!hideAdminModal && <visuals.AdminModal
         opened={adminModalOpen}
         onClose={() => setAdminModalOpen(false)}
         onAction={(opt: { onClick: () => void }) => {
@@ -388,7 +400,7 @@ function App() {
         editorUrl={editorUrl}
         onToggleFullScreen={toggleFullScreen}
         fullScreenState={fullScreenState}
-      />
+      />}
 
       {hideVisual && !modalOpen && <visuals.CategoryIndicatorComponent
         activeCategory={activeCategory}
@@ -406,10 +418,12 @@ function App() {
         onModalOpen={() => {
           setScreenSaverActive(false);
           setModalOpen(true);
+          setAdminModalOpen(false);
         }}
         onCheckout={() => {
           setScreenSaverActive(false);
           setPaymentMethodModalOpen(true);
+          setAdminModalOpen(false);
         }}
         totalPrice={helpers.totalPrice(selectedProducts)}
       />}
@@ -434,32 +448,13 @@ function App() {
       <visuals.PaymentMethodModal
         opened={paymentMethodModalOpen}
         onClose={() => setPaymentMethodModalOpen(false)}
-        onSelectCard={() => { handleCardCheckout(); setPaymentMethod("card") }}
-        onSelectNFC={() => { handleNFCCheckout(); setPaymentMethod("nfc") }}
+        onSelectCard={() => { handleCardCheckout(); setPaymentMethod("card"); setAdminModalOpen(false); }}
+        onSelectNFC={() => { handleNFCCheckout(); setPaymentMethod("nfc"); setAdminModalOpen(false); }}
       />
 
       {screenSaverActive && <ScreenSaver onClose={resetInactivityTimer} />}
-
-      {nfcNotification && (
-        <div style={{
-          position: "fixed",
-          bottom: "2rem",
-          left: "50%",
-          transform: "translateX(-50%)",
-          backgroundColor: "#c0392b",
-          color: "#fff",
-          padding: "0.75rem 1.75rem",
-          borderRadius: "0.5rem",
-          zIndex: 99999,
-          fontSize: "1rem",
-          fontWeight: 600,
-          boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
-          pointerEvents: "none",
-          letterSpacing: "0.01em",
-        }}>
-          ⚠️ {nfcNotification}
-        </div>
-      )}
+      
+      {nfcNotification && <visuals.NFCNotification NFCNotification={nfcNotification} />}
     </main>
   );
 }

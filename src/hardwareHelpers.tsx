@@ -1,4 +1,4 @@
-export { unlockDoor, isDoorClosed, setLightsColor, listenToMotionSensor, listenToNfcAdminFound, listenToNfcUnknownTag };
+export { unlockDoor, isDoorClosed, setLightsColor, listenToMotionSensor, listenToNfcAdminFound, listenToNfcUnknownTag, listenToNFCPayment, listenToNFCTags };
 
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -76,14 +76,42 @@ const listenToNfcAdminFound = async (onAdminFound: () => void) => {
   return unlisten;
 };
 
-const listenToNfcUnknownTag = async (onUnknown: () => void) => {
-  const unlisten = await listen("nfc-unknown-tag", () => {
-    console.log("[NFC] Unknown tag detected!");
-    onUnknown();
+const listenToNfcUnknownTag = async (onUnknown: (tagId: string) => void) => {
+  const unlisten = await listen("nfc-unknown-tag", (event) => {
+    const tagId = event.payload as string;
+    console.log(`NFC unknown tag: ${tagId}`);
+    onUnknown(tagId);
   });
   return unlisten;
 };
 
-const listenToNFCPayment = () => {
-  // should first check if has balance then if has balance and can make payment then return true else false frpm this fn
-}
+const listenToNFCPayment = async (
+  amount: number,
+  onSuccess: (newBalance: number) => void,
+  onError: (error: any) => void
+) => {
+  try {
+    const tag_id = (await invoke("get_tag_id")) as string;
+    if (!tag_id) throw new Error("No tag detected");
+
+    const balance = (await invoke("get_balance_by_tag_id", { tag_id })) as number | null;
+    if (balance === null) throw new Error("Tag not recognised");
+    if (balance < amount) throw new Error("Insufficient balance");
+
+    const newBalance = (await invoke("update_balance_by_tag_id", { tag_id, amount })) as number;
+    onSuccess(newBalance);
+  } catch (error) {
+    console.error("NFC payment failed:", error);
+    onError(error);
+  }
+};
+
+
+const listenToNFCTags = async () => {
+  const tag_id = (await invoke("get_tag_id")) as string;
+  while (!tag_id) {
+    if (tag_id) {
+      return tag_id;
+    }
+  }
+};

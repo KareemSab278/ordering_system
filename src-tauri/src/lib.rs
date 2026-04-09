@@ -65,6 +65,13 @@ async fn update_balance_by_tag_id(tag_id: String, amount: f64) -> Result<f64, St
         .map_err(|e| format!("Failed to update balance: {}", e))
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+async fn get_tag_id() -> Result<String, String> {
+    nfc::listen_for_tag_ids().map_err(|e| format!("Failed to get tag ID: {}", e))
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -299,6 +306,8 @@ pub fn run() {
             new_product,
             // Door
             get_door_status,
+            // NFC
+            get_tag_id,
             // Utility
             kill_app,
             initialize_static_page_server,

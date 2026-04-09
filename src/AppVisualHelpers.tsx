@@ -10,7 +10,7 @@ import { CategoryIndicator } from "./Components/CategoryIndicator";
 
 export {
     styles, SelectedProductsModal, CheckoutModal,
-    PriceStatusPillComponent, AdminModal,
+    PriceStatusPillComponent, AdminModal, NFCNotification,
     CategoryIndicatorComponent, ProductsSection, PaymentMethodModal
 };
 
@@ -136,9 +136,9 @@ const AdminModal = ({ opened, onClose, onAction, editorUrl, onToggleFullScreen, 
         { title: "Refresh Products", onClick: () => window.location.reload() },
         { title: "Open Products Editor", onClick: () => openUrl(editorUrl) },
         { title: "Unlock Door", onClick: () => hardware.unlockDoor() },
-        { title: "Set Light Green", onClick: () => hardware.setLightsColor("green") },
-        { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
-        { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
+        // { title: "Set Light Green", onClick: () => hardware.setLightsColor("green") },
+        // { title: "Set Light Red", onClick: () => hardware.setLightsColor("red") },
+        // { title: "Set Light Blue", onClick: () => hardware.setLightsColor("blue") },
     ];
 
     return (
@@ -223,6 +223,12 @@ const PaymentMethodModal = ({ opened, onClose, onSelectCard, onSelectNFC }: Paym
             <PrimaryButton title="NFC" onClick={() => { onSelectNFC(); onClose(); }} />
         </section>
     </Modal>
+);
+
+const NFCNotification = ({ NFCNotification }: { NFCNotification: string | null }) => (
+    <div style={styles.nfcNotification}>
+        {NFCNotification}
+    </div>
 );
 
 const styles: { [key: string]: React.CSSProperties } = {
@@ -315,4 +321,20 @@ const styles: { [key: string]: React.CSSProperties } = {
         minHeight: "1.4rem",
         maxWidth: "280px",
     },
+    nfcNotification: {
+        position: "fixed",
+        bottom: "2rem",
+        left: "50%",
+        transform: "translateX(-50%)",
+        backgroundColor: "#c03a2bb9",
+        color: "#fff",
+        padding: "0.5rem 1.5rem",
+        borderRadius: "0.5rem",
+        zIndex: 99999,
+        fontSize: "1rem",
+        fontWeight: 600,
+        boxShadow: "0 4px 16px rgba(0,0,0,0.45)",
+        pointerEvents: "none",
+        letterSpacing: "0.01em",
+    }
 };
