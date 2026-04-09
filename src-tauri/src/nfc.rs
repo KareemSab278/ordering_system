@@ -13,7 +13,6 @@
 
 use linux_embedded_hal as hal;
 
-use std::collections::HashMap;
 use std::convert::TryInto;
 use std::thread;
 use std::time::Duration;
@@ -26,9 +25,11 @@ use mfrc522::comm::{blocking::spi::SpiInterface, Interface};
 use mfrc522::{Initialized, Mfrc522};
 use tauri::Emitter;
 
+#[path = "users_database.rs"]
+mod users_database;
+
 const SCAN_DELAY_MS: u32 = 500;
 const DEBOUNCE_MS: u64 = 1500;
-
 
 fn get_spi() -> Result<SpidevDevice, ()> {
     SpidevDevice::open("/dev/spidev0.0").map_err(|e| {
@@ -40,13 +41,6 @@ fn get_spi() -> Result<SpidevDevice, ()> {
 // - `"nfc-unknown-tag"` — tag UID is not recognised
 
 pub fn start_nfc_listener(app_handle: tauri::AppHandle) {
-
-    let admin_tags: HashMap<[u8; 4], &str> = HashMap::from([ // immutable
-            ([132, 35, 165, 229], "ACCEPTED CARD - SERVICE ENGINEER"),
-            ([105, 126, 202, 6], "ACCEPTED CARD - ADMIN (clean card)"),
-            ([222, 183, 17, 6], "ACCEPTED TAG - ADMIN (clean tag)"),
-        ]);
-
     if std::env::consts::OS != "linux" {
         println!(
             "\nLINUX OS REQUIRED.\nDETECTED: {}.\nNFC listener not started.\n",
@@ -110,26 +104,32 @@ pub fn start_nfc_listener(app_handle: tauri::AppHandle) {
         loop {
             if let Ok(atqa) = mfrc522.reqa() {
                 if let Ok(uid) = mfrc522.select(&atqa) {
-                    let uid_bytes: [u8; 4] = match uid.as_bytes().try_into() {
-                        Ok(b) => b,
-                        Err(_) => {
-                            eprintln!("Unexpected UID length — skipping");
-                            delay.delay_ms(SCAN_DELAY_MS);
-                            continue;
-                        }
-                    };
+                    let uid_bytes = uid.as_bytes();
+                    let uid_hex = uid_bytes
+                        .iter()
+                        .map(|hex| format!("{:02x}", hex)) // we only work with lowercase hex. not the id array. the db auto holds it as lowercase anyway.
+                        .collect::<String>();
 
-                    println!("Scanned UID: {:?}", uid_bytes);
+                    println!("SCANNED UID: {}", &uid_hex);
 
-                    if let Some(label) = admin_tags.get(&uid_bytes) {
-                        println!("Admin tag recognised: {label}");
-                        if let Err(e) = app_handle.emit("nfc-admin-found", label.to_string()) {
-                            eprintln!("Failed to emit nfc-admin-found: {e}");
+                    match users_database::get_user_by_tag_id(&uid_hex) {
+                        Ok(Some(user)) if user.is_admin => {
+                            println!("nfc-admin-found");
+                            if let Err(e) = app_handle.emit("nfc-admin-found", user.user_id.to_string()) {
+                                eprintln!("Failed to emit nfc-admin-found: {e}");
+                            }
                         }
-                    } else {
-                        println!("Unknown tag — not in allow-list");
-                        if let Err(e) = app_handle.emit("nfc-unknown-tag", true) {
-                            eprintln!("Failed to emit nfc-unknown-tag: {e}");
+                        Ok(Some(_)) => {
+                            println!("nfc-unknown-tag");
+                            if let Err(e) = app_handle.emit("nfc-unknown-tag", true) {
+                                eprintln!("Failed to emit nfc-unknown-tag: {e}");
+                            }
+                        }
+                        Ok(None) | Err(_) => {
+                            println!("nfc-unknown-tag");
+                            if let Err(e) = app_handle.emit("nfc-unknown-tag", true) {
+                                eprintln!("Failed to emit nfc-unknown-tag: {e}");
+                            }
                         }
                     }
 

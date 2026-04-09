@@ -7,12 +7,11 @@ import * as hardware from "./hardwareHelpers";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { CategoryIndicator } from "./Components/CategoryIndicator";
-import { IconCircleX } from "@tabler/icons-react";
 
 export {
     styles, SelectedProductsModal, CheckoutModal,
     PriceStatusPillComponent, AdminModal,
-    CategoryIndicatorComponent, ProductsSection
+    CategoryIndicatorComponent, ProductsSection, PaymentMethodModal
 };
 
 const CATEGORIES = ["All", "Drinks", "Snacks", "Food", "Questionable"];
@@ -28,9 +27,10 @@ type SelectedProductsModalProps = {
 type CheckoutModalProps = {
     opened: boolean;
     payMessage: string;
-    payStatus: "paying" | "dispensing" | "done" | "waiting_door" | "error" | "idle";
+    payStatus: "paying" | "dispensing" | "done" | "waiting_door" | "error" | "idle" | "nfc";
     onDismiss: () => void;
     onCancel: () => void;
+    paymentType: "card" | "nfc" | null;
 };
 
 type PriceStatusPillProps = {
@@ -87,15 +87,32 @@ const SelectedProductsModal = ({ opened, onClose, selectedProducts, onRemove, on
     </Modal>
 );
 
-const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel }: CheckoutModalProps) => (
-    <Modal opened={opened} onClose={onDismiss} title="Contactless Payment">
+const CheckoutModal = ({ opened, payMessage, payStatus, onDismiss, onCancel, paymentType }: CheckoutModalProps) => (
+    <Modal opened={opened} onClose={onDismiss} title={`${paymentType === "card" ? "Card" : "NFC"} Contactless Payment`}>
         <section style={styles.paymentSection}>
-            <div style={styles.statusIcon}>{helpers.statusIcon(payStatus)}</div>
-            <p style={styles.statusMessage}>{payMessage}</p>
 
-            {(payStatus === "error" || payStatus === "done") && (
-                <PrimaryButton title="Dismiss" onClick={onDismiss} />
-            )}
+            {paymentType === "card" &&
+                <>
+
+                    <div style={styles.statusIcon}>{helpers.statusIcon(payStatus)}</div>
+                    <p style={styles.statusMessage}>{payMessage}</p>
+
+                    {(payStatus === "error" || payStatus === "done") && (
+                        <PrimaryButton title="Dismiss" onClick={onDismiss} />
+                    )}
+                </>
+            }
+
+            {paymentType === "nfc" &&
+                <>
+                    <div style={styles.statusIcon}>{helpers.statusIcon(paymentType)}</div>
+                    <p style={styles.statusMessage}>{payMessage}</p>
+
+                    {(payStatus === "error" || payStatus === "done") && (
+                        <PrimaryButton title="Dismiss" onClick={onDismiss} />
+                    )}
+                </>
+            }
 
             {payStatus === "paying" && <PrimaryButton title="Cancel" onClick={onCancel} />}
         </section>
@@ -138,7 +155,7 @@ const AdminModal = ({ opened, onClose, onAction, editorUrl, onToggleFullScreen, 
                     <PrimaryButton
                         key={idx}
                         title={opt.title}
-                        onClick={opt.doubleClick ? () => {} : () => onAction(opt)}
+                        onClick={opt.doubleClick ? () => { } : () => onAction(opt)}
                         onDoubleClick={opt.doubleClick ? () => onAction(opt) : undefined}
                     />
                 ))}
@@ -201,6 +218,15 @@ const ProductsSection = ({ products, appendProduct, selectedProducts, activeCate
 };
 
 
+type PaymentMethodModalProps = { opened: boolean; onClose: () => void; onSelectCard: () => void; onSelectNFC: () => void }
+const PaymentMethodModal = ({ opened, onClose, onSelectCard, onSelectNFC }: PaymentMethodModalProps) => (
+    <Modal opened={opened} onClose={onClose} title="Select Payment Method">
+        <section style={styles.paymentSection}>
+            <PrimaryButton title="Card" onClick={() => { onSelectCard(); onClose(); }} />
+            <PrimaryButton title="NFC" onClick={() => { onSelectNFC(); onClose(); }} />
+        </section>
+    </Modal>
+);
 
 const styles: { [key: string]: React.CSSProperties } = {
     body: {

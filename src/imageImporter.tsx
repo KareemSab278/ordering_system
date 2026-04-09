@@ -1,13 +1,7 @@
-import archbtw from './images/archbtw.jpg';
-import linux from './images/linux.jpg';
-import win7 from './images/win7.jpg';
-import wxp from './images/wxp.jpg';
+import coffee from './images/coffee.jpeg';
 
 const images = {
-  'archbtw.jpg': archbtw,
-  'linux.jpg': linux,
-  'win7.jpg': win7,
-  'wxp.jpg': wxp,
+  'coffee.jpeg': coffee,
 };
 
 export default images;

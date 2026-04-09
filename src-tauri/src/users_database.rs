@@ -45,7 +45,7 @@ pub struct User {
 pub fn new_user(tag_id: &str, full_name: &str, is_admin: bool, balance: f64) -> Result<()> {
     let conn = open_user_db()?;
     conn.execute(
-        "INSERT INTO users (tag_id, full_name, is_admin, balance) VALUES (?1, ?2, ?3, ?4)",
+        "INSERT INTO users (tag_id, full_name, is_admin, balance) VALUES (lower(?1), ?2, ?3, ?4)",
         params![tag_id, full_name, is_admin, balance],
     )?;
     Ok(())
@@ -76,7 +76,7 @@ pub fn search_users_by_name(name: &str) -> Result<Vec<User>> {
 pub fn get_user_by_tag_id(tag_id: &str) -> Result<Option<User>> {
     let conn = open_user_db()?;
     let mut stmt = conn.prepare(
-        "SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE tag_id = ?1",
+        "SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE tag_id = lower(?1)",
     )?;
     let user_iter = stmt.query_map(params![tag_id], |row| {
         Ok(User {
@@ -96,7 +96,7 @@ pub fn get_user_by_tag_id(tag_id: &str) -> Result<Option<User>> {
 
 pub fn get_balance_by_tag_id(tag_id: &str) -> Result<Option<f64>> {
     let conn = open_user_db()?;
-    let mut stmt = conn.prepare("SELECT balance FROM users WHERE tag_id = ?1")?;
+    let mut stmt = conn.prepare("SELECT balance FROM users WHERE tag_id = lower(?1)")?;
     let balance_iter = stmt.query_map(params![tag_id], |row| row.get(0))?;
 
     for balance in balance_iter {
@@ -105,11 +105,33 @@ pub fn get_balance_by_tag_id(tag_id: &str) -> Result<Option<f64>> {
     Ok(None)
 }
 
+pub fn get_all_admins() -> Result<Vec<User>> {
+    let conn = open_user_db()?;
+    let mut stmt = conn.prepare(
+        "SELECT user_id, tag_id, full_name, is_admin, balance FROM users WHERE is_admin = 1",
+    )?;
+    let admin_iter = stmt.query_map([], |row| {
+        Ok(User {
+            user_id: row.get(0)?,
+            tag_id: row.get(1)?,
+            full_name: row.get(2)?,
+            is_admin: row.get(3)?,
+            balance: row.get(4)?,
+        })
+    })?;
+
+    let mut admins = Vec::new();
+    for admin in admin_iter {
+        admins.push(admin?);
+    }
+    Ok(admins)
+}
+
 pub fn update_balance_by_tag_id(tag_id: &str, amount: f64) -> std::result::Result<f64, String> {
     let conn = open_user_db().map_err(|e| e.to_string())?;
     let current_balance: f64 = conn
         .query_row(
-            "SELECT balance FROM users WHERE tag_id = ?1",
+            "SELECT balance FROM users WHERE tag_id = lower(?1)",
             params![tag_id],
             |row| row.get(0),
         )
@@ -121,7 +143,7 @@ pub fn update_balance_by_tag_id(tag_id: &str, amount: f64) -> std::result::Resul
         Err(format!("Insufficient balance: {}", current_balance))
     } else {
         conn.execute(
-            "UPDATE users SET balance = ?1 WHERE tag_id = ?2",
+            "UPDATE users SET balance = ?1 WHERE tag_id = lower(?2)",
             params![new_balance, tag_id],
         )
         .map_err(|e| e.to_string())?;
@@ -137,7 +159,7 @@ pub fn update_user_by_tag_id(
 ) -> Result<()> {
     let conn = open_user_db()?;
     conn.execute(
-        "UPDATE users SET full_name = ?1, is_admin = ?2, balance = ?3 WHERE tag_id = ?4",
+        "UPDATE users SET full_name = ?1, is_admin = ?2, balance = ?3 WHERE tag_id = lower(?4)",
         params![full_name, is_admin, balance, tag_id],
     )?;
     Ok(())
@@ -145,6 +167,6 @@ pub fn update_user_by_tag_id(
 
 pub fn delete_user_by_tag_id(tag_id: &str) -> Result<()> {
     let conn = open_user_db()?;
-    conn.execute("DELETE FROM users WHERE tag_id = ?1", params![tag_id])?;
+    conn.execute("DELETE FROM users WHERE tag_id = lower(?1)", params![tag_id])?;
     Ok(())
 }

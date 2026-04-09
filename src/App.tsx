@@ -10,7 +10,7 @@ import { useTimeout } from "@mantine/hooks";
 export { App };
 
 const INITIAL_STATE_FULLSCREEN: boolean = true;
-const SCREENSAVER_TIMEOUT_MINUTES: number = 1;
+const SCREENSAVER_TIMEOUT_MINUTES: number = 0.1;
 const FETCH_PRODUCTS_INTERVAL: number = 6000;
 const NFC_ONLY_MODE: boolean = false; // set to true to disable the corner admin trigger and rely solely on NFC for admin access
 
@@ -19,13 +19,15 @@ function App() {
   const [screenSaverActive, setScreenSaverActive] = useState<boolean>(false);
   const [checkoutActive, setCheckoutActive] = useState<boolean>(false);
   const [adminModalOpen, setAdminModalOpen] = useState<boolean>(false);
+  const [paymentMethodModalOpen, setPaymentMethodModalOpen] = useState<boolean>(false);
+
   const [fullScreenState, setFullScreenState] = useState<boolean>(INITIAL_STATE_FULLSCREEN);
 
   const [activeCategory, setActiveCategory] = useState<string>("All");
   const [selectedProducts, setSelectedProducts] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
 
-  const [payStatus, setPayStatus] = useState<"paying" | "dispensing" | "done" | "waiting_door" | "error" | "idle">("idle");
+  const [payStatus, setPayStatus] = useState<"paying" | "dispensing" | "done" | "waiting_door" | "error" | "idle" | "nfc">("idle");
   const [payMessage, setPayMessage] = useState<string>("");
   const [editorUrl, setEditorUrl] = useState<string>("");
   const [nfcNotification, setNfcNotification] = useState<string | null>(null);
@@ -37,6 +39,16 @@ function App() {
   const pollRef = useRef<number | null>(null);
   const inactivityTimerRef = useRef<number | null>(null);
   const cancelledRef = useRef<boolean>(false);
+
+  const [paymentMethod, setPaymentMethod] = useState<"card" | "nfc" | null>(null);
+
+  const handleNFCCheckout = () => {
+    setPaymentMethod("nfc");
+    setPayStatus("paying");
+    setPayMessage("Please tap your NFC tag to pay…");
+    setCheckoutActive(true);
+    setScreenSaverActive(false);
+  };
 
   const clearInactivityTimer = () => {
     if (inactivityTimerRef.current) {
@@ -75,14 +87,12 @@ function App() {
     }, 3000) as unknown as number;
   };
 
-  const listenToNfc = async () => {
+  const listenToNfc = async () => { // need to change this to check if user is admin or not.
     unlistenNfcAdminRef.current = await hardware.listenToNfcAdminFound(() => {
-      console.log("[App] NFC admin tag detected");
-      setScreenSaverActive(false);
-      setAdminModalOpen(true);
+      !modalOpen && !checkoutActive && (setAdminModalOpen(true), setScreenSaverActive(false)); // only show admin if nothing else open.
+
     });
     unlistenNfcUnknownRef.current = await hardware.listenToNfcUnknownTag(() => {
-      console.log("[App] NFC unknown tag detected");
       showNfcNotification("NFC tag not recognised");
     });
   };
@@ -263,9 +273,10 @@ function App() {
     }, 500);
   };
 
-  const handleCheckout = async () => {
+  const handleCardCheckout = async () => {
     if (selectedProducts.length === 0) return;
 
+    setScreenSaverActive(false);
     cancelledRef.current = false;
     setCheckoutActive(true);
     setPayStatus("paying");
@@ -295,7 +306,7 @@ function App() {
     }
   };
 
-  const handleCheckoutCancel = async () => {
+  const handleCardCheckoutCancel = async () => {
     cancelledRef.current = true;
     stopPolling();
     setCheckoutActive(false);
@@ -354,7 +365,7 @@ function App() {
     getCurrentWindow().setFullscreen(newFullScreenState);
   };
 
-  const hideVisual = !adminModalOpen && !checkoutActive;
+  const hideVisual = !adminModalOpen && !checkoutActive && !modalOpen && !paymentMethodModalOpen;
 
   return (
     <main style={visuals.styles.body}>
@@ -396,7 +407,7 @@ function App() {
         }}
         onCheckout={() => {
           setScreenSaverActive(false);
-          handleCheckout();
+          setPaymentMethodModalOpen(true);
         }}
         totalPrice={helpers.totalPrice(selectedProducts)}
       />}
@@ -414,7 +425,15 @@ function App() {
         payMessage={payMessage}
         payStatus={payStatus}
         onDismiss={resetCheckoutState}
-        onCancel={handleCheckoutCancel}
+        onCancel={handleCardCheckoutCancel}
+        paymentType={paymentMethod}
+      />
+
+      <visuals.PaymentMethodModal
+        opened={paymentMethodModalOpen}
+        onClose={() => setPaymentMethodModalOpen(false)}
+        onSelectCard={() => { handleCardCheckout(); setPaymentMethod("card") }}
+        onSelectNFC={() => { handleNFCCheckout(); setPaymentMethod("nfc") }}
       />
 
       {screenSaverActive && <ScreenSaver onClose={resetInactivityTimer} />}

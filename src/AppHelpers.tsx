@@ -17,11 +17,14 @@ import {
   IconShoppingBag,
 } from "@tabler/icons-react";
 
-const statusIcon = (payStatus: "paying" | "dispensing" | "done" | "waiting_door" | "error" | "idle") => {
+import { TbNfc } from "react-icons/tb";
+
+const statusIcon = (payStatus: "paying" | "dispensing" | "done" | "waiting_door" | "error" | "idle" | "nfc") => {
   const iconProps = { size: 56, stroke: 1.5, color: "#fff" };
   return (
     {
       paying: <IconCreditCard {...iconProps} />,
+      nfc: <TbNfc/>,
       dispensing: <IconSettings {...iconProps} />,
       done: <IconCircleCheck {...iconProps} color="#4caf50" />,
       waiting_door: <IconDoor {...iconProps} />,
