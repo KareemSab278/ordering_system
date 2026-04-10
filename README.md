@@ -473,6 +473,21 @@ pub struct User {
 
 Tag IDs are stored and compared in lowercase (`lower(?1)`) to normalise across reader output formats.
 
+### Admin Tag Setup
+
+If the system has no admin user yet, create one with `create_admin.py` after first scanning the NFC tag to get its UID from the application.
+
+Steps:
+1. Scan the unidentified NFC tag with the running system and note the `tag_id` shown in the red notification.
+2. Download or use `create_admin.py` from this repository.
+3. Run:
+   ```bash
+   python3 create_admin.py
+   ```
+4. Enter the scanned `tag_id` and the admin full name when prompted.
+
+This adds the tag as an admin user in `~/data/ordering_system_users.db` so that future scans are recognised as admin access.
+
 ---
 
 ### Axum Product Editor Server (Rust)
@@ -1628,7 +1643,7 @@ npm run test
 
 ---
 
-## Over-the-Air Updates
+## Over-the-Air Updates (Does not work - signature issues)
 
 The application uses the [Tauri updater plugin](https://tauri.app/plugin/updater/) for OTA (over-the-air) updates. When the app starts, it checks a hosted `updates.json` file. If a newer version is available, the user is prompted to install it.
 
