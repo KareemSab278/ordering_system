@@ -10,11 +10,31 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
 
+REPO_ROOT = Path(__file__).resolve().parent
+
+def _load_env_file(env_path: Path) -> None:
+    if not env_path.exists():
+        return
+
+    for line in env_path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+_load_env_file(REPO_ROOT / ".env")
+
 DB_FILENAME = "ordering_system_users.db"
-PASSWORD = "adminpass" # test password for now. will remove later
+PASSWORD = os.getenv("CREATE_ADMIN_PASSWORD")
 DESKTOP_FILE_NAME = "Ordering System Admin Creator.desktop"
 
-REPO_ROOT = Path(__file__).resolve().parent
 DATA_DIR = Path.home() / "data"
 DB_PATH = DATA_DIR / DB_FILENAME
 CARGO_MANIFEST = REPO_ROOT / "src-tauri" / "Cargo.toml"
@@ -243,8 +263,7 @@ class AdminCreatorApp:
             self.admin_status_label.config(text="No admin exists. First scanned tag can be added as admin.", fg="darkgreen")
             self.create_button.config(state="normal")
         else:
-            self.admin_status_label.config(text=f"Admin exists ({admin_count}). Additional admins cannot be created here.", fg="darkred")
-            self.create_button.config(state="disabled")
+            self.admin_status_label.config(text=f"Admin exists ({admin_count}). Additional admins can be created as backups if needed.", fg="darkred")
 
     def _count_admins(self) -> int:
         conn = sqlite3.connect(DB_PATH)
@@ -255,11 +274,6 @@ class AdminCreatorApp:
         return count
 
     def _create_admin(self):
-        if self._count_admins() != 0:
-            messagebox.showinfo("Admin already present", "An admin already exists in the database.")
-            self._update_admin_status()
-            return
-
         tag_id = self.selected_tag or (self.scanned_tags[-1] if self.scanned_tags else None)
         full_name = self.full_name_var.get().strip()
 
@@ -282,7 +296,6 @@ class AdminCreatorApp:
             conn.close()
             messagebox.showinfo("Success", f"Admin created for tag {tag_id}.")
             self._update_admin_status()
-            self.create_button.config(state="disabled")
         except sqlite3.IntegrityError as exc:
             messagebox.showerror("Database error", f"Could not create admin: {exc}")
         except Exception as exc:
