@@ -1,6 +1,6 @@
 # Coinadrink Ordering System
 
-A contactless card payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic and hardware communication). Includes Raspberry Pi GPIO-based PIR motion sensing for screen wake/inactivity and an MFRC522 NFC reader for admin authentication.
+A contactless card and NFC balance payment system for PicoVend EZ Bridge vending machines. Built with React (frontend), Tauri (desktop bridge), and Flask (payment logic and hardware communication). Features Raspberry Pi GPIO-based PIR motion sensing for screen-saver wake/inactivity, an MFRC522 NFC reader for admin authentication and user balance payments, and a full-screen screen saver that activates after a configurable inactivity timeout.
 
 ---
 
@@ -18,6 +18,7 @@ A contactless card payment system for PicoVend EZ Bridge vending machines. Built
    - [Application Startup](#application-startup)
    - [Product Selection](#product-selection)
    - [Payment Flow (Technical)](#payment-flow-technical)
+   - [NFC Payment Flow](#nfc-payment-flow)
    - [Payment Flow (Customer Perspective)](#payment-flow-customer-perspective)
    - [Product Management (Admin)](#product-management-admin)
 5. [State Flow Diagram](#state-flow-diagram)
@@ -35,7 +36,8 @@ A contactless card payment system for PicoVend EZ Bridge vending machines. Built
     - [Cross-Compilation for Raspberry Pi](#cross-compilation-for-raspberry-pi)
 11. [Troubleshooting](#troubleshooting)
 12. [Development Notes](#development-notes)
-13. [Over-the-Air Updates](#over-the-air-updates)
+13. [Testing](#testing)
+14. [Over-the-Air Updates](#over-the-air-updates)
     - [How It Works](#how-it-works)
     - [Signing Format](#signing-format)
     - [Key Files](#key-files)
@@ -91,11 +93,13 @@ The system is composed of four layers that communicate over HTTP and serial:
 
 | Layer | Files | Responsibility |
 |-------|-------|----------------|
-| React Frontend | `src/App.jsx`, `src/AppHelpers.jsx`, `src/Components/*`, `src/main.jsx` | Product browsing, cart management, payment status display, admin panel |
+| React Frontend | `src/App.tsx`, `src/AppHelpers.tsx`, `src/AppVisualHelpers.tsx`, `src/hardwareHelpers.tsx`, `src/Components/*` | Product browsing, cart management, payment status display, admin panel, screen saver, NFC notifications |
 | Tauri Bridge | `src-tauri/src/lib.rs` | Exposes Rust functions as commands callable from React via `invoke()`. Manages HTTP calls to Flask, direct SQLite access, process lifecycle for Flask and Axum servers |
 | Axum Server | `src-tauri/src/server.rs` | Standalone HTTP server on port 3000 serving a static HTML product editor page and REST API for CRUD operations on the products database |
 | Flask Server | `app_vend.py` | Payment orchestration, serial communication with the MDB card reader, basket state tracking, dispense acknowledgment |
-| Database Layer | `src-tauri/src/database.rs` | All SQLite read/write operations for both the products database and the orders database |
+| Database Layer | `src-tauri/src/database.rs`, `src-tauri/src/users_database.rs` | All SQLite read/write operations for products, orders, and users (NFC tag IDs and balances) |
+| Motion Sensor | `src-tauri/src/motion_sensor.rs` | Listens on GPIO pin 7 (BCM) for PIR sensor output. Emits `motion-detected` Tauri event to wake the screen saver |
+| NFC Reader | `src-tauri/src/nfc.rs` | Reads MFRC522 tags over SPI. Emits `nfc-admin-found` for allowlisted tags or `nfc-unknown-tag` for other tags |
 
 ---
 
@@ -110,17 +114,34 @@ ordering_system/
 |-- vite.config.js               Vite bundler configuration
 |-- index.html                   Vite entry HTML (loads React app)
 |-- README.md                    This file
+|-- test_sensor.py               Standalone Raspberry Pi PIR sensor test script
 |
 |-- src/                         React frontend source
-|   |-- main.jsx                 React entry point, renders App inside MantineProvider
-|   |-- App.jsx                  Main application component (state, logic, layout)
-|   |-- AppHelpers.jsx           Helper functions and style definitions
+|   |-- main.tsx                 React entry point, renders App inside MantineProvider
+|   |-- App.tsx                  Main application component (state, logic, layout)
+|   |-- AppHelpers.tsx           Pure helper functions (price, filter, icons)
+|   |-- AppVisualHelpers.tsx     All rendered sub-sections and modal components
+|   |-- hardwareHelpers.tsx      Hardware abstraction (door, lights, NFC, motion)
+|   |-- imageImporter.tsx        Static image map for screen saver slides
 |   |-- Components/
-|       |-- Button.jsx           PrimaryButton and RemoveButton components
-|       |-- CategoryIndicator.jsx Category tab bar with floating indicator
-|       |-- Modal.jsx            Generic modal overlay component
-|       |-- PriceStatusPill.jsx  Fixed bottom bar with cart view and checkout buttons
-|       |-- ProductCard.jsx      Individual product display card
+|   |   |-- Button.tsx           PrimaryButton and RemoveButton components
+|   |   |-- CategoryIndicator.tsx Category tab bar with floating indicator
+|   |   |-- Modal.tsx            Generic modal overlay component
+|   |   |-- PriceStatusPill.tsx  Fixed bottom bar with cart view and checkout buttons
+|   |   |-- ProductCard.tsx      Individual product display card
+|   |   |-- QuantityBadge.tsx    Badge overlay showing count in the cart
+|   |   |-- ScreenSaver.tsx      Full-screen image slideshow screen saver
+|   |-- test/
+|       |-- setup.js             Vitest global test setup
+|       |-- AppHelpers.test.spec.tsx
+|       |-- Button.test.spec.tsx
+|       |-- CategoryIndicator.test.spec.tsx
+|       |-- hardwareHelpers.test.spec.tsx
+|       |-- Modal.test.spec.tsx
+|       |-- PriceStatusPill.test.spec.tsx
+|       |-- ProductCard.test.spec.tsx
+|       |-- QuantityBadge.test.spec.tsx
+|       |-- ScreenSaver.test.spec.tsx
 |
 |-- src-tauri/                   Tauri (Rust) backend
 |   |-- Cargo.toml               Rust dependencies
@@ -131,13 +152,15 @@ ordering_system/
 |   |-- src/
 |       |-- main.rs              Rust entry point, calls lib::run()
 |       |-- lib.rs               Tauri command definitions, server process management
-|       |-- database.rs          SQLite database operations (products + orders)
+|       |-- database.rs          SQLite operations (products + orders)
+|       |-- users_database.rs    SQLite operations (users + NFC balances)
 |       |-- server.rs            Axum HTTP server for product editor (port 3000)
+|       |-- motion_sensor.rs     Raspberry Pi PIR sensor listener (GPIO, emits events)
+|       |-- nfc.rs               MFRC522 NFC reader listener (SPI, emits events)
 |       |-- static/
 |           |-- index.html       Product editor admin page (served by Axum)
 |
 |-- public/                      Vite static assets
-|-- vcpkg/                       C++ package manager (dependency of rusqlite/libsqlite3-sys)
 ```
 
 ---
@@ -150,24 +173,37 @@ ordering_system/
 
 Mounts the React application inside a MantineProvider (UI component library) and renders the `App` component into the DOM element with id `root`.
 
-#### Main Component: `src/App.jsx`
+#### Main Component: `src/App.tsx`
 
 This is the central component managing all application state and orchestrating user interactions. It contains no routing; the entire application is a single view with modal overlays.
+
+**Constants:**
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `INITIAL_STATE_FULLSCREEN` | `true` | Whether the app starts in fullscreen mode |
+| `SCREENSAVER_TIMEOUT_MINUTES` | `1` | Minutes of inactivity before the screen saver activates |
+| `FETCH_PRODUCTS_INTERVAL` | `6000` | Product poll interval in milliseconds |
+| `NFC_ONLY_MODE` | `false` | Set to `true` to disable the corner double-click admin trigger and require NFC for admin access |
 
 **State variables:**
 
 | Variable | Type | Purpose |
 |----------|------|---------|
 | `modalOpen` | boolean | Controls visibility of the selected products (cart) modal |
+| `screenSaverActive` | boolean | Whether the full-screen screen saver is currently showing |
 | `checkoutActive` | boolean | Controls visibility of the payment modal |
 | `adminModalOpen` | boolean | Controls visibility of the admin panel modal |
+| `paymentMethodModalOpen` | boolean | Controls visibility of the payment method selection modal |
 | `fullScreenState` | boolean | Tracks whether the window is in fullscreen mode |
 | `activeCategory` | string | Currently selected product category filter |
 | `selectedProducts` | array | Products added to the cart, each with a `count` field |
 | `products` | array | All products fetched from the database |
-| `payStatus` | string | Current payment state: `"idle"`, `"paying"`, `"dispensing"`, `"done"`, or `"error"` |
+| `payStatus` | string | Current payment state: `"idle"`, `"paying"`, `"nfc"`, `"dispensing"`, `"done"`, `"waiting_door"`, or `"error"` |
 | `payMessage` | string | Human-readable payment status message displayed in the checkout modal |
 | `editorUrl` | string | URL of the Axum product editor server (displayed in admin panel) |
+| `nfcNotification` | string \| null | Short-lived notification message for NFC tag scan results |
+| `paymentMethod` | `"card"` \| `"nfc"` \| null | Which payment method the user selected in the payment method modal |
 
 **Refs:**
 
@@ -175,10 +211,11 @@ This is the central component managing all application state and orchestrating u
 |-----|---------|
 | `pollRef` | Holds the interval ID for payment state polling or product refresh polling |
 | `cancelledRef` | Boolean flag to signal cancellation of an in-progress payment flow |
-
-**Categories:**
-
-The constant `CATEGORIES` defines the available filter tabs: `["All", "Drinks", "Snacks", "Food", "Drugs", "Questionable"]`. These must match the category values stored in the products database.
+| `unlistenMotionRef` | Unsubscribe function for the `motion-detected` Tauri event listener |
+| `unlistenNfcAdminRef` | Unsubscribe function for the `nfc-admin-found` Tauri event listener |
+| `unlistenNfcUnknownRef` | Unsubscribe function for the `nfc-unknown-tag` Tauri event listener |
+| `nfcNotificationTimerRef` | Timeout ID for auto-clearing the NFC notification after 5 seconds |
+| `inactivityTimerRef` | Timeout ID for the screen saver inactivity countdown |
 
 **Key functions:**
 
@@ -186,58 +223,112 @@ The constant `CATEGORIES` defines the available filter tabs: `["All", "Drinks", 
 |----------|-------------|
 | `fetchProducts` | Sets up a 6-second polling interval that calls the `query_products` Tauri command to refresh the product list from the database |
 | `stopPolling` | Clears the active polling interval |
-| `toggleFullScreen` | Toggles the Tauri window between fullscreen and windowed mode |
-| `openEditor` | Opens the product editor URL in the system browser using the Tauri opener plugin |
-| `doDispenseAll` | After payment approval, loops calling `dispense_item` for each basket item until all are dispensed. Then saves each item as an order in the orders database via `insert_order` |
-| `startPolling` | Begins 500ms polling of `get_pay_state` to monitor payment progress. On approval, triggers `doDispenseAll`. On error, updates status |
-| `handleCheckout` | Initiates the payment flow: sets paying state, converts product prices to pence (integer), calls `initiate_payment`, and starts polling on success |
-| `handleCheckoutCancel` | Cancels an in-progress payment: sets the cancellation flag, stops polling, closes the modal, resets state |
+| `clearInactivityTimer` | Clears the inactivity timeout preventing the screen saver from activating |
+| `startInactivityTimer` | Starts (or restarts) the countdown to activate the screen saver. No-ops while checkout is active |
+| `resetInactivityTimer` | Dismisses the screen saver if visible and restarts the inactivity countdown |
+| `listenToMotionSensor` | Registers the `motion-detected` Tauri event listener. Calls `resetInactivityTimer` on each event |
+| `listenToNfc` | Registers `nfc-admin-found` (opens admin modal) and `nfc-unknown-tag` (shows notification) Tauri event listeners |
+| `showNfcNotification(message)` | Sets the NFC notification text and auto-clears it after 5 seconds |
+| `handleNFCCheckout` | Initiates NFC balance payment: calls `listenToNFCPayment`, unlocks door after approval, polls door closure, shows remaining balance on completion |
+| `handleCardCheckout` | Initiates card payment: sets paying state, converts prices to pence, calls Flask via `initiate_payment`, starts 500ms state polling |
+| `doDispenseAll` | After card payment approval, loops calling `dispense_item` for each basket item until all are dispensed. Saves each as an order |
+| `startPolling` | Begins 500ms polling of `get_pay_state` to monitor card payment progress. On approval, triggers `doDispenseAll` |
 | `appendProduct(product, action)` | Adds (`"+"`) or removes (`"-"`) a product from the cart. Increments/decrements count for existing items, adds new items with count 1, removes items when count reaches 0 |
 
 **Layout structure:**
 
-The component renders five sections:
-1. `categoryIndicator` -- Fixed top bar with category filter tabs
-2. `productsSection` -- Grid of product cards filtered by active category and availability
-3. `priceStatusPill` -- Fixed bottom bar with "View Cart" and "Checkout" buttons showing total price
-4. `checkoutModal` -- Payment progress modal with status icon, message, and action buttons
-5. `selectedProductsModal` -- Cart modal showing selected products with quantity and remove controls
-6. `adminModal` -- Admin panel modal (triggered by double-clicking a hidden div in the top-right corner) with fullscreen toggle, kill app, refresh products, and editor link
+The component renders:
+1. `ScreenSaver` -- Full-screen image slideshow overlay. Shown when `screenSaverActive` is true; dismissed on tap or motion
+2. `NFCNotification` -- Temporary toast shown when an unknown NFC tag is scanned
+3. `CategoryIndicatorComponent` -- Fixed top bar with category filter tabs
+4. `ProductsSection` -- Grid of product cards filtered by active category and availability
+5. `PriceStatusPillComponent` -- Fixed bottom bar with "View Cart" and "Checkout" buttons showing total price
+6. `CheckoutModal` -- Payment progress modal with status icon, message, and action buttons
+7. `SelectedProductsModal` -- Cart modal showing selected products with quantity and remove controls
+8. `AdminModal` -- Admin panel modal (triggered by double-clicking a hidden corner div, or by an NFC admin tag) with fullscreen toggle, kill app, refresh products, and editor link
+9. `PaymentMethodModal` -- Lets the user choose between card payment and NFC balance payment before proceeding to checkout
 
-#### Helper Module: `src/AppHelpers.jsx`
+#### Helper Module: `src/AppHelpers.tsx`
 
-Exports four items:
+Exports pure functions used throughout the application:
 
 | Export | Type | Description |
 |--------|------|-------------|
-| `statusIcon(payStatus)` | function | Returns an emoji icon string based on payment status. `"paying"` returns a card icon, `"dispensing"` returns a gear icon, `"done"` returns a checkmark, `"error"` returns a cross |
+| `statusIcon(payStatus)` | function | Returns a React icon component based on the payment status string. `"paying"` → credit card icon, `"nfc"` → NFC icon, `"dispensing"` → settings/gear icon, `"done"` → green checkmark, `"waiting_door"` → door icon, `"error"` → red cross, `"idle"` → null |
 | `totalPrice(selectedProducts)` | function | Reduces the selected products array to a total price by summing `product_price * count` for each item |
-| `filteredProducts(products, activeCategory)` | function | Filters the product array by category and availability. Note: this function is defined here but the actual filtering in `App.jsx` is done inline rather than calling this function |
-| `styles` | object | Contains all style objects used throughout the application. Defines layout for the body, top container, products section, payment section, admin trigger, status icon, and status message |
+| `filteredProducts(products, activeCategory)` | function | Filters the product array by category and availability |
+| `getProductIcon(productName, productCategory, size)` | function | Returns a themed icon component for a product based on keyword matching on the name and category (bread, bottle, candy, cookie, shopping bag) |
+
+#### Visual Module: `src/AppVisualHelpers.tsx`
+
+Exports all rendered sub-sections and modal components used by `App.tsx`. This separates layout from logic. The `CATEGORIES` constant is also defined here.
+
+| Export | Description |
+|--------|-------------|
+| `SelectedProductsModal` | Cart modal listing selected items with quantity badges and remove buttons |
+| `CheckoutModal` | Payment status modal displaying the status icon, message, cancel, and dismiss controls. Behaviour differs between card and NFC payment types |
+| `PriceStatusPillComponent` | Wrapper for `PriceStatusPill`, passes through modal open and checkout callbacks |
+| `AdminModal` | Admin panel with fullscreen toggle, editor URL link, kill-app button, and product refresh |
+| `CategoryIndicatorComponent` | Wraps `CategoryIndicator` with the full categories list |
+| `ProductsSection` | Renders the filtered product grid using `ProductCard` components |
+| `PaymentMethodModal` | Payment method selector modal offering "Card" and "NFC" options |
+| `NFCNotification` | Small notification element showing the last NFC scan result |
+| `styles` | Shared style object used across visual sub-components |
+
+#### Hardware Module: `src/hardwareHelpers.tsx`
+
+Provides hardware abstraction functions that wrap Tauri `invoke` calls and Tauri event listeners. All environment-specific concerns (door lock, lights, NFC, motion) are isolated here.
+
+| Export | Description |
+|--------|-------------|
+| `unlockDoor()` | POSTs to `$VITE_DOOR_API_URL/open` to release the door lock |
+| `isDoorClosed()` | Invokes `get_door_status` and returns `true` if `lock_state === "closed"` |
+| `setLightsColor(color)` | POSTs to the Shelly cloud API to set the RGB light to `"green"`, `"red"`, or `"blue"` at full brightness |
+| `listenToMotionSensor(onMotion)` | Subscribes to the `motion-detected` Tauri event. Returns the unsubscribe function |
+| `listenToNfcAdminFound(onAdminFound)` | Subscribes to the `nfc-admin-found` Tauri event. Returns the unsubscribe function |
+| `listenToNfcUnknownTag(onUnknown)` | Subscribes to the `nfc-unknown-tag` Tauri event, passing the tag UID string to the callback. Returns the unsubscribe function |
+| `listenToNFCPayment(amount, onSuccess, onError)` | Invokes `get_tag_id` to read the user's NFC tag, checks their balance, deducts the amount via `update_balance_by_tag_id`, and calls `onSuccess(newBalance)` or `onError(err)` |
+| `listenToNFCTags()` | Low-level helper that loops on `get_tag_id` until a tag UID is returned |
+
+**Environment variables used by `hardwareHelpers.tsx`:**
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_DOOR_API_URL` | Base URL of the door lock API |
+| `VITE_LIGHT_AUTHENTICATION_KEY` | Shelly cloud auth key |
+| `VITE_LIGHT_ID` | Shelly device ID |
 
 #### Components
 
-**`src/Components/Button.jsx`**
+**`src/Components/Button.tsx`**
 
 Exports two components:
-- `PrimaryButton` -- A Mantine `Button` with a filled variant, extra-large size, rounded corners, and hover effects. Accepts `title`, `onClick`, `color`, and `onDoubleClick` props. The hover effect dynamically calculates a semi-transparent version of the provided color.
+- `PrimaryButton` -- A Mantine `Button` with a filled variant, extra-large size, rounded corners, and hover effects. Accepts `title`, `onClick`, `color`, and `onDoubleClick` props.
 - `RemoveButton` -- A Mantine outline `Button` styled as a small circular button displaying a cross icon. Used on product cards in the cart to decrement/remove items.
 
-**`src/Components/CategoryIndicator.jsx`**
+**`src/Components/CategoryIndicator.tsx`**
 
-Renders a horizontal scrollable row of `PrimaryButton` components, one per category. The active category button is colored blue (`#3e73ef`), others are gray. Includes a Mantine `FloatingIndicator` positioned at the bottom of the active category (though its positioning is CSS-based and may not perfectly track dynamic widths).
+Renders a horizontal scrollable row of `PrimaryButton` components, one per category. The active category button is colored blue (`#3e73ef`), others are gray. Includes a Mantine `FloatingIndicator` at the bottom of the active tab.
 
-**`src/Components/Modal.jsx`**
+**`src/Components/Modal.tsx`**
 
 A generic modal overlay component. When `opened` is true, renders a fixed full-viewport dark overlay. Clicking the overlay calls `closed`. The inner content area stops click propagation. Accepts `title`, `children`, and optional `innerStyle` for width overrides.
 
-**`src/Components/PriceStatusPill.jsx`**
+**`src/Components/PriceStatusPill.tsx`**
 
-A fixed bottom bar containing two buttons: "View Cart" (calls `onModalOpen`) and "Checkout" (calls `onCheckout`). The checkout button displays the total price formatted with a dollar sign. Note: the currency symbol here is `$` while the rest of the application uses GBP. This is a display inconsistency in the component.
+A fixed bottom bar containing two buttons: "View Cart" (calls `onModalOpen`) and "Checkout" (calls `onCheckout`). The checkout button displays the total price in GBP.
 
-**`src/Components/ProductCard.jsx`**
+**`src/Components/ProductCard.tsx`**
 
-Renders an individual product as a rounded card. Displays the product name (truncated to 20 characters if longer) and price in GBP. When the `selected` prop is true, a `RemoveButton` is rendered. Clicking the card calls `onClick` with the product object.
+Renders an individual product as a rounded card. Displays the product name (truncated to 20 characters if longer) and price in GBP. Shows a `QuantityBadge` when the item is in the cart. When `selected` and `showRemoveButton` are both true, a `RemoveButton` is rendered.
+
+**`src/Components/QuantityBadge.tsx`**
+
+A small circular badge overlaid on a product card showing how many of that item are in the cart. Renders nothing when `count` is zero or undefined. Accepts a custom `color` prop (default red `#e53935`).
+
+**`src/Components/ScreenSaver.tsx`**
+
+A full-screen image slideshow overlay with a configurable `INTERVAL` (default 8 seconds). Accepts an optional `images` array; falls back to the images imported from `imageImporter.tsx`. Tapping anywhere dismisses the screen saver and calls `onClose`. The slide timer is cleared on unmount to prevent memory leaks.
 
 ---
 
@@ -288,6 +379,10 @@ This file defines all Tauri commands that the React frontend can call via `invok
 | `kill_app` | none | `Result<(), String>` | Kills the Axum server child process (if running) and exits the application with `std::process::exit(0)` |
 | `initialize_static_page_server` | none | `Result<(), String>` | Spawns `cargo run --bin server` as a child process to start the Axum product editor server. Kills any previously running instance first |
 | `return_editor_url` | none | `String` | Returns the Axum server URL by calling `server::return_editor_url()` |
+| `initialize_user_database` | none | `Result<(), String>` | Creates the users database and table if they do not exist |
+| `get_balance_by_tag_id` | `tag_id: String` | `Result<Option<f64>, String>` | Returns the balance of the user with the given NFC tag UID, or `None` if not found |
+| `update_balance_by_tag_id` | `tag_id: String, amount: f64` | `Result<f64, String>` | Deducts `amount` from the user's balance and returns the new balance. Errors if the balance would go negative |
+| `get_tag_id` | none | `Result<String, String>` | Blocks until an NFC tag is read, then returns the tag UID as a hex string |
 
 **BasketItem struct:**
 
@@ -303,6 +398,80 @@ struct BasketItem {
 **Shutdown behavior:**
 
 When the Tauri `RunEvent::Exit` event fires, the application kills the Axum server child process if it is still running.
+
+---
+
+#### Motion Sensor: `src-tauri/src/motion_sensor.rs`
+
+Spawns a background thread that polls a Raspberry Pi GPIO pin connected to a PIR sensor. When motion is detected (pin goes high), it emits a `motion-detected` Tauri event to the frontend.
+
+**Constants:**
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `GPIO_PIN` | `7` | BCM-numbered GPIO pin for the PIR sensor output |
+
+**Behaviour:**
+- Runs on all platforms but requires `rppal` GPIO access; returns immediately with an error log if GPIO cannot be initialised (e.g. on non-Pi hardware)
+- Waits 2 seconds after initialisation before polling to let the PIR sensor warm up
+- Polls every 50 ms and only emits an event on the rising edge (low → high transition) to avoid repeated events during sustained motion
+
+#### NFC Reader: `src-tauri/src/nfc.rs`
+
+Manages the MFRC522 NFC reader connected via SPI at `/dev/spidev0.0`. Provides two public functions:
+
+**Constants:**
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `GPIO_PIN` | `8` | GPIO pin for the NFC reader |
+
+**`start_nfc_listener(app_handle)`** -- Spawns a background thread (Linux only) that continuously scans for NFC tags. On each scan:
+- If the tag UID is found in the admin allow-list in `users_database`, emits `nfc-admin-found`
+- Otherwise emits `nfc-unknown-tag` with the tag UID as the payload
+
+**`listen_for_tag_ids()`** -- Blocking function that loops until a tag is detected and returns the UID as a hex string. Used by the `get_tag_id` Tauri command for NFC payment flows.
+
+**Constants:**
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `SCAN_DELAY_MS` | `500` | Delay between scan attempts in milliseconds |
+| `DEBOUNCE_MS` | `1500` | Minimum time between successive events for the same tag |
+
+Both functions are no-ops on non-Linux platforms (logs a message and returns).
+
+#### Users Database: `src-tauri/src/users_database.rs`
+
+Manages the `ordering_system_users.db` SQLite database stored in `~/data/`. Stores NFC tag IDs, user names, admin status, and balance.
+
+**User struct:**
+
+```rust
+pub struct User {
+    pub user_id: u16,
+    pub tag_id: String,    // lowercase hex UID, e.g. "a1b2c3d4"
+    pub full_name: String,
+    pub is_admin: bool,
+    pub balance: f64,      // GBP balance for NFC payments
+}
+```
+
+**Public functions:**
+
+| Function | Description |
+|----------|-------------|
+| `initialize_user_database()` | Creates the users table if it does not exist |
+| `new_user(tag_id, full_name, is_admin, balance)` | Inserts a new user |
+| `search_users_by_name(name)` | Returns users whose `full_name` contains the search string (case-insensitive LIKE match) |
+| `get_user_by_tag_id(tag_id)` | Returns the user with the exact tag UID, or `None` |
+| `get_balance_by_tag_id(tag_id)` | Returns just the balance for a tag UID, or `None` |
+| `get_all_admins()` | Returns all users with `is_admin = 1` |
+| `update_balance_by_tag_id(tag_id, amount)` | Atomically deducts `amount` from the balance. Returns the new balance, or an error string if insufficient funds or tag not found |
+| `update_user_by_tag_id(tag_id, full_name, is_admin, balance)` | Updates all fields for a user |
+| `delete_user_by_tag_id(tag_id)` | Deletes a user by tag UID |
+
+Tag IDs are stored and compared in lowercase (`lower(?1)`) to normalise across reader output formats.
 
 ---
 
@@ -497,7 +666,15 @@ lib.rs :: run()
   |     Sets up window
   |
   v
-App.jsx :: useEffect (runs once on mount)
+App.tsx :: useEffect (runs once on mount)
+  |
+  +-- listenToMotionSensor()            // registers motion-detected listener
+  |     -> hardware.listenToMotionSensor()
+  |     -> Calls resetInactivityTimer on each event
+  |
+  +-- listenToNfc()                     // registers NFC event listeners
+  |     -> hardware.listenToNfcAdminFound() -> opens admin modal
+  |     -> hardware.listenToNfcUnknownTag() -> shows NFC notification
   |
   +-- invoke("return_editor_url")
   |     -> server.rs :: return_editor_url()
@@ -510,11 +687,9 @@ App.jsx :: useEffect (runs once on mount)
   |     -> Axum server starts on port 3000
   |     -> Serves product editor HTML + REST API
   |
-  +-- invoke("query_products") (via fetchProducts, polled every 6 seconds)
-  |     -> lib.rs :: query_products()
+  +-- fetchProducts() (polled every 6 seconds)
+  |     -> invoke("query_products")
   |     -> database.rs :: query_products()
-  |     -> Opens ~/data/products.db
-  |     -> SELECT * FROM products
   |     -> Returns Vec<Product> to React
   |     -> Stored in products state
   |
@@ -524,6 +699,12 @@ App.jsx :: useEffect (runs once on mount)
   |     -> Waits 2 seconds for Flask startup
   |     -> Flask server starts on port 8080
   |     -> MDB bridge connects to card reader serial port
+  |
+  +-- startInactivityTimer()            // starts screen saver countdown
+  |     -> After SCREENSAVER_TIMEOUT_MINUTES, sets screenSaverActive = true
+  |
+  +-- window event listeners registered (pointerdown, keydown)
+  |     -> each calls resetInactivityTimer()
   |
   +-- getCurrentWindow().setFullscreen(true)
         -> Window goes fullscreen after 1 second delay
@@ -690,16 +871,78 @@ selectedProducts state updated
 2. Taps product cards to add items to their selection
 3. Each tap adds one unit; multiple taps add multiple units
 4. The total price updates in real time on the bottom bar
-5. Customer taps "Checkout"
-6. Screen shows "Initiating payment..." for 1-2 seconds
-7. Screen changes to "Tap your contactless card to pay"
-8. Customer taps their contactless card, phone, or smartwatch on the card reader
-9. If approved: screen shows "Card approved!" then "Dispensing your items..." with a countdown
-10. The vending machine physically dispenses each item
-11. Screen shows "Payment complete! Thank you." for 3 seconds
-12. Screen returns to the product selection view
-13. If declined or timeout: screen shows the error reason with a "Dismiss" button
-14. No items are dispensed on failure
+5. Customer taps "Checkout" — a payment method modal appears
+6. Customer selects **Card** or **NFC**
+
+**Card path:**
+7. Screen shows "Initiating payment..." for 1-2 seconds
+8. Screen changes to "Tap your contactless card to pay"
+9. Customer taps their contactless card, phone, or smartwatch on the card reader
+10. If approved: screen shows "Card approved!" then "Dispensing your items..." with a countdown
+11. The vending machine physically dispenses each item
+12. Screen shows "Payment complete! Thank you." for 3 seconds
+13. Screen returns to the product selection view
+
+**NFC balance path:**
+7. Screen shows "Please tap your NFC tag to pay…"
+8. Customer taps their registered NFC tag
+9. If sufficient balance: door unlocks and screen shows "Please take your items and close the door."
+10. App polls the door status; once closed, screen shows "Payment successful. Remaining balance: £X.XX"
+11. Screen returns to the product selection view after 5 seconds
+
+**On failure (either method):** screen shows the error reason with a "Dismiss" button; door not unlocked.
+
+### NFC Payment Flow
+
+```
+Customer selects NFC in PaymentMethodModal
+  |
+  v
+App.tsx :: handleNFCCheckout()
+  |
+  +-- Set paymentMethod = "nfc"
+  +-- Set payStatus = "paying"
+  +-- Set payMessage = "Please tap your NFC tag to pay…"
+  +-- Set checkoutActive = true
+  |
+  v
+hardware.listenToNFCPayment(totalPrice, onSuccess, onError)
+  |
+  +-- invoke("get_tag_id")              // blocks until tag scanned
+  |     -> lib.rs :: get_tag_id()
+  |     -> nfc.rs :: listen_for_tag_ids()
+  |     -> Returns tag UID hex string
+  |
+  +-- invoke("get_balance_by_tag_id", { tag_id })
+  |     -> lib.rs :: get_balance_by_tag_id()
+  |     -> users_database.rs :: get_balance_by_tag_id()
+  |
+  +-- Guard: if balance < totalPrice, call onError("Insufficient balance")
+  |
+  +-- invoke("update_balance_by_tag_id", { tag_id, amount: totalPrice })
+  |     -> lib.rs :: update_balance_by_tag_id()
+  |     -> users_database.rs :: update_balance_by_tag_id()
+  |     -> Atomically deducts and returns new balance
+  |
+  +-- onSuccess(newBalance) called
+        |
+        v
+App.tsx onSuccess handler
+  |
+  +-- Set payStatus = "dispensing"
+  +-- hardware.unlockDoor()             // POST to door API
+  +-- Set payStatus = "waiting_door"
+  +-- Set payMessage = "Please take your items and close the door."
+  |
+  +-- Poll hardware.isDoorClosed() every 500ms
+  |     -> invoke("get_door_status")
+  |     -> Returns true when lock_state === "closed"
+  |
+  +-- On door closed:
+        Set payStatus = "done"
+        Set payMessage = "Payment successful.\nRemaining balance: £X.XX"
+        Wait 5 seconds → resetCheckoutState()
+```
 
 ### Product Management (Admin)
 
@@ -990,13 +1233,17 @@ These are the Rust functions exposed to the React frontend via `invoke()`. Each 
 | `initialize_static_page_server` | `await invoke("initialize_static_page_server")` | Spawns the Axum server |
 | `initialize_orders_database` | `await invoke("initialize_orders_database")` | Creates orders table |
 | `initialize_products_database` | `await invoke("initialize_products_database")` | Creates products table |
+| `initialize_user_database` | `await invoke("initialize_user_database")` | Creates users table |
 | `query_products` | `await invoke("query_products")` | Returns product array |
 | `insert_order` | `await invoke("insert_order", { productId, quantity, price })` | Saves an order |
 | `new_product` | `await invoke("new_product", { productName, productCategory, productPrice, productAvailability })` | Adds a product |
 | `delete_product` | `await invoke("delete_product", { productId })` | Removes a product |
-| `initiate_payment` | `await invoke("initiate_payment", { slot, items })` | Starts payment flow |
+| `initiate_payment` | `await invoke("initiate_payment", { slot, items })` | Starts card payment flow |
 | `dispense_item` | `await invoke("dispense_item", { slot, success })` | Dispenses one item |
-| `get_pay_state` | `await invoke("get_pay_state")` | Polls payment state |
+| `get_pay_state` | `await invoke("get_pay_state")` | Polls card payment state |
+| `get_tag_id` | `await invoke("get_tag_id")` | Blocks until NFC tag scanned; returns UID |
+| `get_balance_by_tag_id` | `await invoke("get_balance_by_tag_id", { tagId })` | Returns NFC user balance |
+| `update_balance_by_tag_id` | `await invoke("update_balance_by_tag_id", { tagId, amount })` | Deducts amount, returns new balance |
 | `return_editor_url` | `await invoke("return_editor_url")` | Gets editor URL string |
 | `kill_app` | `await invoke("kill_app")` | Kills servers and exits |
 
@@ -1030,6 +1277,27 @@ Table: `orders`
 
 Note: There is no foreign key constraint between orders and products. If a product is deleted, its historical orders remain in the orders database.
 
+### Users Database (`~/data/ordering_system_users.db`)
+
+Table: `users`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `user_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Unique user identifier |
+| `tag_id` | TEXT | NOT NULL UNIQUE | NFC tag UID stored as lowercase hex (e.g. `a1b2c3d4`) |
+| `full_name` | TEXT | NOT NULL | Display name |
+| `is_admin` | INTEGER | NOT NULL DEFAULT 0 | Boolean stored as integer: 1 = admin, 0 = regular user |
+| `balance` | REAL | NOT NULL DEFAULT 0 | GBP balance available for NFC payments |
+
+Admin users are those with `is_admin = 1`. Their tag UIDs are checked by the NFC listener at runtime to determine whether to emit `nfc-admin-found` or `nfc-unknown-tag`.
+
+**Accessing the users database manually:**
+```
+cd ~/data
+sqlite3 ordering_system_users.db
+SELECT * FROM users;
+```
+
 ---
 
 ## Configuration
@@ -1057,12 +1325,23 @@ Set these before running `app_vend.py`:
 | `FLASK_BASE` | `http://127.0.0.1:8080` | Base URL for Flask. Change if Flask runs on a different port or host |
 | `API_TOKEN` | `supersecret` | Must match the Flask `API_TOKEN` environment variable |
 
-### React Constants (`App.jsx`)
+### React Constants (`App.tsx`)
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `CATEGORIES` | `["All", "Drinks", "Snacks", "Food", "Drugs", "Questionable"]` | Product category filter tabs. "All" shows everything |
+| `CATEGORIES` | `["All", "Drinks", "Snacks", "Food", "Questionable"]` | Product category filter tabs. "All" shows everything. Defined in `AppVisualHelpers.tsx` |
 | `INITIAL_STATE_FULLSCREEN` | `true` | Whether the app starts in fullscreen mode |
+| `SCREENSAVER_TIMEOUT_MINUTES` | `1` | Minutes of inactivity before the screen saver activates |
+| `FETCH_PRODUCTS_INTERVAL` | `6000` | Milliseconds between product database polls |
+| `NFC_ONLY_MODE` | `false` | Set to `true` to disable the corner double-click admin trigger |
+
+### Frontend Environment Variables (`.env`)
+
+| Variable | Purpose |
+|----------|---------|
+| `VITE_DOOR_API_URL` | Base URL of the door lock API (used by `hardwareHelpers.tsx`) |
+| `VITE_LIGHT_AUTHENTICATION_KEY` | Shelly cloud auth key for the RGB light |
+| `VITE_LIGHT_ID` | Shelly device ID for the RGB light |
 
 ### Tauri Capabilities (`src-tauri/capabilities/default.json`)
 
@@ -1311,11 +1590,41 @@ The application uses two different polling mechanisms:
 
 ### Known Issues and Inconsistencies
 
-1. The `PriceStatusPill` component displays prices with a `$` prefix while the rest of the application uses GBP notation.
-2. The `filteredProducts` function is exported from `AppHelpers.jsx` but the actual filtering in `App.jsx` is done inline rather than calling this helper.
-3. The `pollRef` is shared between product refresh polling and payment state polling. Starting a payment will stop product refresh polling, and it is only resumed if `fetchProducts` is called explicitly.
-4. The `categoryIndocator` variable in `App.jsx` contains a typo (should be `categoryIndicator`).
-5. The Flask server process is spawned but its handle is not stored, so it cannot be cleanly killed on application exit. Only the Axum server process is tracked and killed unless the application is running.
+1. The `pollRef` is shared between product refresh polling and payment state polling. Starting a payment stops product refresh polling; it resumes only if `fetchProducts` is called explicitly (e.g. from the admin panel).
+2. The Flask server process is spawned but its handle is not stored, so it cannot be cleanly killed on application exit. Only the Axum server process is tracked and killed.
+3. The door-closed polling in `handleNFCCheckout` may fire immediately if the lock hardware briefly reports closed on open — a known hardware glitch noted in the code.
+4. `get_tag_id` is a blocking Tauri command; calling it will block the Tauri async runtime thread until a tag is scanned. For production use it should be moved to a dedicated thread.
+
+---
+
+## Testing
+
+The frontend test suite uses **Vitest** and **React Testing Library**. All test files live in `src/test/` and are co-located with the source they test.
+
+### Running Tests
+
+```bash
+# Run all tests once
+npm run test
+```
+
+### Test Files
+
+| File | What it covers |
+|------|---------------|
+| `AppHelpers.test.spec.tsx` | `totalPrice` – edge cases (empty basket, float precision, zero price); `filteredProducts` – category filtering and availability; `statusIcon` – returns correct icon component per status; `getProductIcon` – keyword and category matching |
+| `Button.test.spec.tsx` | `PrimaryButton` – render, click, double-click, custom color; `RemoveButton` – render and click |
+| `CategoryIndicator.test.spec.tsx` | Renders all category buttons; highlights the active one; calls `onCategoryClick` with the correct argument |
+| `hardwareHelpers.test.spec.tsx` | `unlockDoor` – fetch call count, method, URL suffix, return value, error resilience; `setLightsColor` – correct RGB values per colour, Content-Type header, on/brightness payload, error resilience; `isDoorClosed` – invoke call, string/object response parsing, missing key, invoke rejection; `listenToMotionSensor` – listen event name, returns unlisten, fires callback; `listenToNfcAdminFound` – same for `nfc-admin-found`; `listenToNfcUnknownTag` – same for `nfc-unknown-tag`, passes UID payload |
+| `Modal.test.spec.tsx` | Renders when `opened` is true, hidden when false; displays title and children; calls `closed` on overlay click; stops propagation on inner click |
+| `PriceStatusPill.test.spec.tsx` | Renders both buttons; calls `onModalOpen` and `onCheckout`; displays formatted price |
+| `ProductCard.test.spec.tsx` | Renders product name and price; truncates names over 20 characters; calls `onClick`; shows `QuantityBadge` when count > 0; shows `RemoveButton` only when `selected` and `showRemoveButton` are both true |
+| `QuantityBadge.test.spec.tsx` | Renders count when > 0; renders nothing for zero/undefined; applies custom color |
+| `ScreenSaver.test.spec.tsx` | Renders first slide; advances slides on interval; wraps around after last slide; calls `onClose` on tap; clears timer after tap; handles empty images array; uses default imported images when no prop |
+
+### Test Setup
+
+`src/test/setup.js` loads `@testing-library/jest-dom` matchers globally. Tauri APIs (`@tauri-apps/api/core` and `@tauri-apps/api/event`) are mocked at the module level in each test file using `vi.mock`.
 
 ---
 
