@@ -1,10 +1,10 @@
 [package]
-name = "ordering_system"
-version = "0.1.2"
+name = "vend_mini"
+version = "0.1.3"
 description = "A Tauri App"
 authors = ["KareemSab278"]
 edition = "2021"
-default-run = "ordering_system"
+default-run = "vend_mini"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
