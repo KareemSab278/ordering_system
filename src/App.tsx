@@ -5,6 +5,7 @@ import * as helpers from "./AppHelpers";
 import * as visuals from "./AppVisualHelpers";
 import * as hardware from "./hardwareHelpers";
 import { ScreenSaver } from "./Components/ScreenSaver";
+import { check } from "@tauri-apps/plugin-updater";
 
 export { App };
 
@@ -42,6 +43,8 @@ function App() {
   const [paymentMethod, setPaymentMethod] = useState<"card" | "nfc" | null>(null);
 
   const handleNFCCheckout = () => {
+     if (selectedProducts.length === 0 || checkoutActive) return;
+
     setPaymentMethod("nfc");
     setPayStatus("paying");
     setPayMessage("Please tap your NFC tag to pay…");
@@ -123,11 +126,11 @@ function App() {
   };
 
   const listenToNfc = async () => {
-    unlistenNfcAdminRef.current = await hardware.listenToNfcAdminFound(() => {
-      !modalOpen && !checkoutActive && (setAdminModalOpen(true), setScreenSaverActive(false)); // only show admin if nothing else open.
-    });
     unlistenNfcUnknownRef.current = await hardware.listenToNfcUnknownTag((tagId) => {
       showNfcNotification(`Unknown NFC tag: ${tagId}`);
+    });
+    unlistenNfcAdminRef.current = await hardware.listenToNfcAdminFound(() => {
+      !modalOpen && !checkoutActive && (setAdminModalOpen(true), setScreenSaverActive(false)); // only show admin if nothing else open.
     });
   };
 
@@ -470,7 +473,7 @@ function App() {
         opened={paymentMethodModalOpen}
         onClose={() => setPaymentMethodModalOpen(false)}
         onSelectCard={() => { handleCardCheckout(); setPaymentMethod("card"); setAdminModalOpen(false); }}
-        onSelectNFC={() => { handleNFCCheckout(); setPaymentMethod("nfc"); setAdminModalOpen(false); }}
+        onSelectNFC={() => { setPaymentMethod("nfc"); handleNFCCheckout(); setAdminModalOpen(false); }}
       />
 
       {screenSaverActive && <ScreenSaver onClose={resetInactivityTimer} />}

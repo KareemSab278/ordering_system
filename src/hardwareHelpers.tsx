@@ -78,7 +78,7 @@ const listenToNfcAdminFound = async (onAdminFound: () => void) => {
 
 const listenToNfcUnknownTag = async (onUnknown: (tagId: string) => void) => {
   const unlisten = await listen("nfc-unknown-tag", (event) => {
-    const tagId = String(event);
+    const tagId = String((event as any).payload ?? event);
     console.log(`NFC unknown tag: ${tagId}`);
     onUnknown(tagId);
   });
