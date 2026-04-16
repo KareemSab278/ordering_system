@@ -115,21 +115,8 @@ async fn query_products() -> Result<Vec<database::Product>, String> {
 
 #[tauri::command]
 async fn is_raspberry_pi() -> bool {
-    // rapsberry pi uses ARM architecture, so we can check for that
-    #[cfg(target_arch = "arm")]
-    {
-        if cfg!(target_os == "linux") {
-            true
-        } else {
-            false
-        }
-
-        true
-    }
-    #[cfg(not(target_arch = "arm"))]
-    {
-        false
-    }
+    // true if arm and linux (pi) | false otherwise
+    cfg!(all(target_arch = "arm", target_os = "linux"))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
