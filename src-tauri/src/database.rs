@@ -89,6 +89,7 @@ pub fn delete_product(product_id: i32) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn update_product(
     product_id: i32,
     product_name: &str,
@@ -132,6 +133,7 @@ pub fn query_products() -> Result<Vec<Product>> {
 }
 
 #[derive(Serialize, Debug)]
+#[allow(dead_code)]
 pub struct Order {
     pub order_id: i32,
     pub product_id: i32,
@@ -139,7 +141,7 @@ pub struct Order {
     pub price: f64,
     pub timestamp: String,
 }
-
+#[allow(dead_code)]
 pub fn insert_order(product_id: i32, quantity: i32, price: f64) -> Result<()> {
     let conn = open()?;
     conn.execute(
@@ -149,6 +151,7 @@ pub fn insert_order(product_id: i32, quantity: i32, price: f64) -> Result<()> {
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn view_orders() -> Result<Vec<Order>> {
     let conn = open()?;
     let mut stmt =
@@ -166,6 +169,7 @@ pub fn view_orders() -> Result<Vec<Order>> {
 }
 
 #[derive(Serialize, Debug)]
+#[allow(dead_code)]
 pub struct OrderWithProduct {
     pub order_id: i32,
     pub product_id: i32,
@@ -176,6 +180,7 @@ pub struct OrderWithProduct {
     pub timestamp: String,
 }
 
+#[allow(dead_code)]
 pub fn view_orders_with_products(
     start_date: Option<&str>,
     end_date: Option<&str>,

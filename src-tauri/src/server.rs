@@ -165,11 +165,6 @@ async fn delete_user_by_tag_id(Query(params): Query<TagQuery>) -> impl IntoRespo
     }
 }
 
-#[derive(Deserialize)]
-struct SearchName {
-    name: Option<String>,
-}
-
 async fn search_users_by_name(Path(name): Path<String>) -> impl IntoResponse {
     println!("GET /users/name/{}", name);
     match users_database::search_users_by_name(&name) {

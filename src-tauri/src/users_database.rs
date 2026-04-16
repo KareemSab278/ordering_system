@@ -34,6 +34,7 @@ fn open_user_db() -> Result<Connection> {
 }
 
 #[derive(Serialize, Debug)]
+#[allow(dead_code)]
 pub struct User {
     pub user_id: u16,
     pub tag_id: String,
@@ -42,6 +43,7 @@ pub struct User {
     pub balance: f64,
 }
 
+#[allow(dead_code)]
 pub fn new_user(tag_id: &str, full_name: &str, is_admin: bool, balance: f64) -> Result<()> {
     let conn = open_user_db()?;
     conn.execute(
@@ -51,6 +53,7 @@ pub fn new_user(tag_id: &str, full_name: &str, is_admin: bool, balance: f64) -> 
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn search_users_by_name(name: &str) -> Result<Vec<User>> {
     let conn = open_user_db()?;
     let mut stmt = conn.prepare(
@@ -73,6 +76,7 @@ pub fn search_users_by_name(name: &str) -> Result<Vec<User>> {
     Ok(users)
 }
 
+#[allow(dead_code)]
 pub fn get_user_by_tag_id(tag_id: &str) -> Result<Option<User>> {
     let conn = open_user_db()?;
     let mut stmt = conn.prepare(
@@ -94,6 +98,7 @@ pub fn get_user_by_tag_id(tag_id: &str) -> Result<Option<User>> {
     Ok(None)
 }
 
+#[allow(dead_code)]
 pub fn get_balance_by_tag_id(tag_id: &str) -> Result<Option<f64>> {
     let conn = open_user_db()?;
     let mut stmt = conn.prepare("SELECT balance FROM users WHERE tag_id = lower(?1)")?;
@@ -105,6 +110,7 @@ pub fn get_balance_by_tag_id(tag_id: &str) -> Result<Option<f64>> {
     Ok(None)
 }
 
+#[allow(dead_code)]
 pub fn get_all_admins() -> Result<Vec<User>> {
     let conn = open_user_db()?;
     let mut stmt = conn.prepare(
@@ -127,6 +133,7 @@ pub fn get_all_admins() -> Result<Vec<User>> {
     Ok(admins)
 }
 
+#[allow(dead_code)]
 pub fn update_balance_by_tag_id(tag_id: &str, amount: f64) -> std::result::Result<f64, String> {
     let conn = open_user_db().map_err(|e| e.to_string())?;
     let current_balance: f64 = conn
@@ -151,6 +158,7 @@ pub fn update_balance_by_tag_id(tag_id: &str, amount: f64) -> std::result::Resul
     }
 }
 
+#[allow(dead_code)]
 pub fn update_user_by_tag_id(
     tag_id: &str,
     full_name: &str,
@@ -165,6 +173,7 @@ pub fn update_user_by_tag_id(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn delete_user_by_tag_id(tag_id: &str) -> Result<()> {
     let conn = open_user_db()?;
     conn.execute("DELETE FROM users WHERE tag_id = lower(?1)", params![tag_id])?;

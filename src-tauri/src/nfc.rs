@@ -13,7 +13,6 @@
 
 use linux_embedded_hal as hal;
 
-use std::convert::TryInto;
 use std::thread;
 use std::time::Duration;
 
