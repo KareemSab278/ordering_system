@@ -9,9 +9,6 @@ from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
 
 from pathlib import Path
-from dotenv import load_dotenv
-BASE_DIR = Path(__file__).resolve().parent
-load_dotenv(dotenv_path=BASE_DIR / ".env")
 
 import serial
 from flask import Flask, request, jsonify, Response, abort
@@ -24,7 +21,6 @@ BAUDRATE = int(os.environ.get("MDB_BAUD", "115200"))
 READ_TIMEOUT_S = float(os.environ.get("MDB_READ_TIMEOUT", "0.2"))
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.environ.get("WEB_PORT", "8080"))
-API_TOKEN = os.environ.get("API_TOKEN") # Must be set in env for security; default is disabled to prevent accidental exposure.
 CASHLESS_X = int(os.environ.get("CASHLESS_X", "1"))
 BASKET_MODE = os.environ.get("BASKET_MODE", "0")
 CARD_TAP_TIMEOUT_S = float(os.environ.get("CARD_TAP_TIMEOUT_S", "60.0"))
@@ -35,17 +31,6 @@ VNDAPP_TIMEOUT_S = float(os.environ.get("VNDAPP_TIMEOUT_S", "30.0"))
 # ----------------------------
 def now_ms() -> int:
     return int(time.time() * 1000)
-
-def require_token(req):
-    auth = req.headers.get("Authorization", "") or (req.args.get("auth") or "").strip()
-    if auth.startswith("Bearer "):
-        token = auth.split(" ", 1)[1].strip()
-    else:
-        token = auth.strip()
-    if not token:
-        abort(401)
-    if token != API_TOKEN:
-        abort(403) # unauthorized!
 
 
 def crlf_line(s: str) -> bytes:
@@ -431,7 +416,6 @@ bridge.start()
 # Poll GET /api/state — state.pay.approved becomes true once VNDAPP is received.
 @app.post("/api/basket/pay")
 def api_basket_pay():
-    require_token(request)
     data = request.get_json(force=True, silent=False) or {}
     items = data.get("items", [])
 
@@ -472,7 +456,6 @@ def api_basket_pay():
 #   {"ok": true, "done": true,  "remaining": 0}   — basket complete
 @app.post("/api/basket/dispense")
 def api_basket_dispense():
-    require_token(request)
     data = request.get_json(force=True, silent=False) or {}
     success = bool(data.get("success", True))
 
@@ -514,7 +497,6 @@ def api_basket_dispense():
 
 @app.post("/api/state/terminate")
 def api_state_terminate():
-    require_token(request)
     bridge._pay_cancel.set()
     try:
         bridge.send_and_wait_any(f"CSLS{CASHLESS_X}CANCEL", timeout_s=1.5)
@@ -535,13 +517,11 @@ def api_state_terminate():
 
 @app.get("/api/state")
 def api_state():
-    require_token(request)
     return jsonify(bridge.snapshot())
 
 
 @app.post("/api/raw")
 def api_raw():
-    require_token(request)
     data = request.get_json(force=True, silent=False) or {}
     cmd = (data.get("cmd") or "").strip()
     if not cmd:
@@ -555,7 +535,6 @@ def api_raw():
 
 @app.post("/api/cashless/reset")
 def api_cashless_reset():
-    require_token(request)
     cmd = f"CSLS{CASHLESS_X}RESET"
     lines = bridge.send_and_wait_any(cmd, timeout_s=3.0)
     return jsonify({"ok": True, "cmd": cmd, "lines": lines})
@@ -563,7 +542,6 @@ def api_cashless_reset():
 
 @app.post("/api/cashless/enable")
 def api_cashless_enable():
-    require_token(request)
     cmd = f"CSLS{CASHLESS_X}ENABLE"
     lines = bridge.send_and_wait_any(cmd, timeout_s=2.0)
     return jsonify({"ok": True, "cmd": cmd, "lines": lines})
@@ -571,7 +549,6 @@ def api_cashless_enable():
 
 @app.post("/api/cashless/disable")
 def api_cashless_disable():
-    require_token(request)
     cmd = f"CSLS{CASHLESS_X}DISABLE"
     lines = bridge.send_and_wait_any(cmd, timeout_s=2.0)
     return jsonify({"ok": True, "cmd": cmd, "lines": lines})
@@ -579,7 +556,6 @@ def api_cashless_disable():
 
 @app.post("/api/cashless/cancel")
 def api_cashless_cancel():
-    require_token(request)
     cmd = f"CSLS{CASHLESS_X}CANCEL"
     lines = bridge.send_and_wait_any(cmd, timeout_s=2.0)
     return jsonify({"ok": True, "cmd": cmd, "lines": lines})
@@ -587,7 +563,6 @@ def api_cashless_cancel():
 
 @app.get("/api/alive")
 def api_alive():
-    require_token(request)
     cmd = "ALIVE?"
     lines = bridge.send_and_wait_any(cmd, timeout_s=1.5)
     return jsonify({"ok": True, "cmd": cmd, "lines": lines})
@@ -595,7 +570,6 @@ def api_alive():
 
 @app.get("/api/events")
 def api_events():
-    require_token(request)
 
     def gen():
         yield f"data: {json.dumps({'kind':'info','line':'SSE connected','ts_ms':now_ms()})}\n\n"
@@ -617,7 +591,6 @@ def healthz():
 
 
 def main():
-    print(f"[app_vend] Token  : API_TOKEN env var (currently {'NOT SET' if not API_TOKEN else 'SET'})")
     print(f"[app_vend] Starting on http://{WEB_HOST}:{WEB_PORT}")
     print(f"[app_vend] Serial : {SERIAL_PORT} @ {BAUDRATE} baud (no flow control)")
     print(f"[app_vend] Basket mode: {BASKET_MODE}")

@@ -1,4 +1,3 @@
-use dotenv::dotenv;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
@@ -28,25 +27,6 @@ fn make_client() -> Result<Client, String> {
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))
 }
-
-// Source - https://stackoverflow.com/q/62546180 (edited)
-// Posted by elementory, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-04-16, License - CC BY-SA 4.0
-fn get_api_token() -> String {
-    dotenv().ok();
-    let api_token = std::env::var("API_TOKEN");
-    match api_token {
-        Ok(token) => token.to_string(),
-        Err(_) => {
-            eprintln!("API_TOKEN not set");
-            "".to_string()
-        }
-    }
-}
-
-// fn auth_header() -> String {
-//     format!("Bearer {}", get_api_token())
-// }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -139,12 +119,6 @@ async fn initialize_payment_server() -> Result<(), String> {
     .spawn()
     .map_err(|e| format!("Failed to spawn payment server: {}", e))?;
 
-
-    // println!("Payment server process started successfully with api key: {}.", get_api_token());
-    if get_api_token().is_empty() || get_api_token() == "" {
-        eprintln!("Warning: API_TOKEN is not set. The payment server may reject requests without a valid token.");
-    }
-
     Ok(())
 }
 
@@ -156,7 +130,6 @@ async fn terminate_payment() -> Result<(), String> {
     let client = make_client()?;
     let _ = client
         .post(format!("{}/api/state/terminate", FLASK_BASE))
-        .header("Authorization", get_api_token())
         .send()
         .await
         .map_err(|e| format!("Failed to terminate payment: {}", e))?;
@@ -191,7 +164,6 @@ async fn initiate_payment(slot: u32, items: Vec<BasketItem>) -> Result<String, S
 
     let resp = client
         .post(format!("{}/api/basket/pay", FLASK_BASE))
-        .header("Authorization", get_api_token())
         .json(&body)
         .send()
         .await
@@ -242,7 +214,6 @@ async fn dispense_item(slot: u32, success: bool) -> Result<String, String> {
 
     let resp = client
         .post(format!("{}/api/basket/dispense", FLASK_BASE))
-        .header("Authorization", get_api_token())
         .json(&body)
         .send()
         .await
@@ -261,7 +232,6 @@ async fn get_pay_state() -> Result<String, String> {
 
     let resp = client
         .get(format!("{}/api/state", FLASK_BASE))
-        .header("Authorization", get_api_token())
         .send()
         .await
         .map_err(|e| format!("State request failed: {}", e))?;
@@ -349,8 +319,6 @@ pub fn run() {
             let _ = app
                 .handle()
                 .plugin(tauri_plugin_updater::Builder::new().build());
-
-            // println!("Auth header: {}", get_api_token());
 
             motion_sensor::start_motion_listener(app.handle().clone());
 
