@@ -347,7 +347,6 @@ This file defines all Tauri commands that the React frontend can call via `invok
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `FLASK_BASE` | `"http://127.0.0.1:8080"` | Base URL for the Flask payment server |
-| `API_TOKEN` | `"supersecret"` | Bearer token sent to Flask for authentication |
 
 **Globals:**
 
@@ -1114,8 +1113,6 @@ The Flask server communicates with the PicoVend EZ Bridge card reader using MDB 
 
 ### Flask Endpoints
 
-All Flask endpoints require an `Authorization: Bearer <API_TOKEN>` header. The token is stored in .env and is different in every device.
-
 #### POST /api/basket/pay
 
 Initiates a payment flow. Returns immediately; payment processing happens in a background thread.
@@ -1337,7 +1334,6 @@ Set these before running `app_vend.py`:
 | `MDB_BAUD` | `115200` | Baud rate for serial communication |
 | `WEB_HOST` | `0.0.0.0` | Flask HTTP server bind address |
 | `WEB_PORT` | `8080` | Flask HTTP server port |
-| `API_TOKEN` | `supersecret` | Bearer token for API authentication. Must match `API_TOKEN` constant in `lib.rs` |
 | `CASHLESS_X` | `1` | Cashless device index (typically 1 for the first reader) |
 | `BASKET_MODE` | `0` | Basket mode: 0 = single item mode, 1 = multiple item mode |
 | `CARD_TAP_TIMEOUT_S` | `60.0` | Seconds to wait for a customer to tap their card |
@@ -1348,7 +1344,6 @@ Set these before running `app_vend.py`:
 | Constant | Value | Description |
 |----------|-------|---------|
 | `FLASK_BASE` | `http://127.0.0.1:8080` | Base URL for Flask. Change if Flask runs on a different port or host |
-| `API_TOKEN` | `supersecret` | Must match the Flask `API_TOKEN` environment variable |
 
 ### React Constants (`App.tsx`)
 
@@ -1443,7 +1438,6 @@ python app_vend.py
 # With custom settings
 export MDB_PORT=/dev/ttyUSB0
 export WEB_PORT=8080
-export API_TOKEN=your_secret_token
 python app_vend.py
 ```
 
@@ -1451,7 +1445,6 @@ Expected output:
 ```
 [app_vend] Starting on http://0.0.0.0:8080
 [app_vend] Serial : /dev/ttyUSB0 @ 115200 baud
-[app_vend] Token  : API_TOKEN env var (currently set)
 [app_vend] Basket mode: 0
 ```
 
@@ -1591,10 +1584,6 @@ If a payment fails at any stage (initiation, card tap timeout, card decline, dis
 The Tauri application manages two child processes:
 1. **Flask server** (`app_vend.py`) -- Spawned via Python on startup. Not tracked in `SERVER_PROCESS` (fire-and-forget).
 2. **Axum server** (`cargo run --bin server`) -- Spawned on startup, tracked in `SERVER_PROCESS`. Killed when the app exits or when `kill_app` is called. Also killed and respawned if `initialize_static_page_server` is called again.
-
-### Token Security
-
-The `API_TOKEN` constant in `lib.rs` and the `API_TOKEN` environment variable for Flask must match. The default value `supersecret` should be changed to a strong, unique secret in production deployments. The token is sent as a Bearer token in the Authorization header of all HTTP requests from Tauri to Flask.
 
 ### Database Location
 

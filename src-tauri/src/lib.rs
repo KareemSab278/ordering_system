@@ -160,15 +160,13 @@ async fn initiate_payment(slot: u32, items: Vec<BasketItem>) -> Result<String, S
         "items": items,
     });
 
-    // println!("initiate_payment fn called with slot: {}, items: {:?} and header as Authorization {}", slot, items, get_api_token());
-
     let resp = client
         .post(format!("{}/api/basket/pay", FLASK_BASE))
         .json(&body)
         .send()
         .await
         .map_err(|_| {
-            format!("Payment request failed. Is app_vend.py running on :8080? Is api token set?")
+            format!("Payment request failed. Is app_vend.py running on :8080?")
         })?;
 
     resp.text()
