@@ -115,8 +115,8 @@ async fn query_products() -> Result<Vec<database::Product>, String> {
 
 #[tauri::command]
 async fn is_raspberry_pi() -> bool {
-    // true if arm and linux (pi) | false otherwise
-    cfg!(all(target_arch = "arm", target_os = "linux"))
+    return cfg!(all(target_arch = "arm", target_os = "linux"))
+        || cfg!(all(target_arch = "aarch64", target_os = "linux"));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,8 +139,9 @@ async fn initialize_payment_server() -> Result<(), String> {
     .spawn()
     .map_err(|e| format!("Failed to spawn payment server: {}", e))?;
 
-    let api_key = get_api_token();
-    if api_key.is_empty() {
+
+    println!("Payment server process started successfully with api key: {}.", get_api_token());
+    if get_api_token().is_empty() || get_api_token() == "" {
         eprintln!("Warning: API_TOKEN is not set. The payment server may reject requests without a valid token.");
     }
 
@@ -185,6 +186,8 @@ async fn initiate_payment(slot: u32, items: Vec<BasketItem>) -> Result<String, S
         "slot": slot,
         "items": items,
     });
+
+    println!("initiate_payment fn called with slot: {}, items: {:?} and header as Authorization {}", slot, items, auth_header());
 
     let resp = client
         .post(format!("{}/api/basket/pay", FLASK_BASE))
@@ -347,7 +350,10 @@ pub fn run() {
                 .handle()
                 .plugin(tauri_plugin_updater::Builder::new().build());
 
+            println!("Auth header: {}", auth_header());
+
             motion_sensor::start_motion_listener(app.handle().clone());
+
             nfc::start_nfc_listener(app.handle().clone());
 
             Ok(())

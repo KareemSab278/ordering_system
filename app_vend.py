@@ -421,7 +421,7 @@ def _pay_flow(items: List[Dict[str, Any]]):
 # ----------------------------
 app = Flask(__name__)
 bridge = MdbBridge(SERIAL_PORT, BAUDRATE)
-bridge.start()
+bridge.start() 
 
 
 # ── /api/basket/pay ──────────────────────────────────────────────────────────
@@ -617,9 +617,9 @@ def healthz():
 
 
 def main():
+    print(f"[app_vend] Token  : API_TOKEN env var (currently {'NOT SET' if not API_TOKEN else f'SET AS {API_TOKEN}'})")
     print(f"[app_vend] Starting on http://{WEB_HOST}:{WEB_PORT}")
     print(f"[app_vend] Serial : {SERIAL_PORT} @ {BAUDRATE} baud (no flow control)")
-    print(f"[app_vend] Token  : API_TOKEN env var (currently {'NOT SET' if not API_TOKEN else 'SET'})")
     print(f"[app_vend] Basket mode: {BASKET_MODE}")
     app.run(host=WEB_HOST, port=WEB_PORT, threaded=True)
 
